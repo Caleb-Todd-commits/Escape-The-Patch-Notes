@@ -9,3 +9,5 @@ playwright-report/
 *.log
 Escape The Patch Notes/
 .vercel
+.DS_Store
+.claude/
