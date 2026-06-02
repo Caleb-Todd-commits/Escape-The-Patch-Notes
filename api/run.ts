@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { canonicalPatches, createFallbackRun, runJsonSchema, sanitizeRun, type PatchRun } from "../src/shared/run";
+import { canonicalPatches, createFallbackRun, runJsonSchema, sanitizeRun, type PatchRun } from "./_shared.js";
 
 interface VercelRequestLike {
   method?: string;
