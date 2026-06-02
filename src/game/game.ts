@@ -178,6 +178,10 @@ export class Game {
   private jumpQueued = false;
   private groundedPlatformId = "";
   private shareUrl = "";
+  private levelPauseStart = 0;
+  private levelPausedMs = 0;
+  private runPauseStart = 0;
+  private runPausedMs = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -316,6 +320,8 @@ export class Game {
     this.results = [];
     this.particles = [];
     this.runStartedAt = performance.now();
+    this.runPausedMs = 0;
+    this.runPauseStart = 0;
     this.resetLevel();
   }
 
@@ -342,6 +348,8 @@ export class Game {
     this.message = "";
     this.messageUntil = 0;
     this.levelStartedAt = performance.now();
+    this.levelPausedMs = 0;
+    this.levelPauseStart = 0;
     this.setStatus();
   }
 
@@ -479,9 +487,14 @@ export class Game {
     }
   }
 
+  private levelElapsed(time: number): number {
+    const pauseAdjust = this.levelPauseStart > 0 ? time - this.levelPauseStart : 0;
+    return Math.max(0, (time - this.levelStartedAt - this.levelPausedMs - pauseAdjust) / 1000);
+  }
+
   private activePlatforms(time: number): PlatformState[] {
     const rollbackActive = this.isRollbackActive(time);
-    const elapsed = (time - this.levelStartedAt) / 1000;
+    const elapsed = this.levelElapsed(time);
 
     return this.level.platforms.filter((platform) => {
       if (platform.broken) {
@@ -623,7 +636,7 @@ export class Game {
       return;
     }
 
-    const elapsed = Math.max(0, (time - this.levelStartedAt) / 1000);
+    const elapsed = this.levelElapsed(time);
     const patch = this.currentPatch();
     const report = this.bonusChallengeActive && Boolean(this.level.bugReport?.collected);
     const bonusComplete = !this.bonusChallengeActive || report;
@@ -671,6 +684,8 @@ export class Game {
     this.results = [];
     this.particles = [];
     this.runStartedAt = performance.now();
+    this.runPausedMs = 0;
+    this.runPauseStart = 0;
     this.resetLevel();
     this.startLevelIntro();
   }
@@ -737,7 +752,7 @@ export class Game {
 
   private activeExit(time: number): Rect {
     if (this.level.exit.pads && this.level.exit.pads.length > 0) {
-      const elapsed = (time - this.levelStartedAt) / 1000;
+      const elapsed = this.levelElapsed(time);
       const index = Math.floor(elapsed / 2.1) % this.level.exit.pads.length;
       return this.level.exit.pads[index];
     }
@@ -746,7 +761,25 @@ export class Game {
   }
 
   private setMode(mode: GameMode): void {
+    const prev = this.mode;
     this.mode = mode;
+
+    if (prev === "playing" && mode !== "playing") {
+      const now = performance.now();
+      this.levelPauseStart = now;
+      this.runPauseStart = now;
+    } else if (prev !== "playing" && mode === "playing") {
+      const now = performance.now();
+      if (this.levelPauseStart > 0) {
+        this.levelPausedMs += now - this.levelPauseStart;
+        this.levelPauseStart = 0;
+      }
+      if (this.runPauseStart > 0) {
+        this.runPausedMs += now - this.runPauseStart;
+        this.runPauseStart = 0;
+      }
+    }
+
     this.setStatus();
   }
 
@@ -1018,8 +1051,9 @@ export class Game {
 
   private drawHud(ctx: CanvasRenderingContext2D, time: number): void {
     const patch = this.currentPatch();
-    const elapsed = Math.max(0, (time - this.levelStartedAt) / 1000);
-    const runElapsed = Math.max(0, (time - this.runStartedAt) / 1000);
+    const elapsed = this.levelElapsed(time);
+    const runPauseAdjust = this.runPauseStart > 0 ? time - this.runPauseStart : 0;
+    const runElapsed = Math.max(0, (time - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000);
 
     drawPanel(ctx, 18, 18, 430, 104, "rgba(9, 13, 31, 0.82)", "#53d7ff");
     drawText(ctx, `${this.level.title} - ${patch.headline}`, 34, 44, 20, "#ffffff", "bold");
@@ -1069,10 +1103,10 @@ export class Game {
       "bold",
     );
 
-    drawPanel(ctx, 18, 474, 386, 44, "rgba(9, 13, 31, 0.76)", "#4caf63");
-    drawText(ctx, `Level ${elapsed.toFixed(1)}s`, 34, 502, 15, "#ffffff", "bold");
-    drawText(ctx, `Run ${runElapsed.toFixed(1)}s`, 164, 502, 15, "#ffffff", "bold");
-    drawText(ctx, this.audio.muted ? "Muted" : "Sound", 292, 502, 15, this.audio.muted ? "#ff9aa7" : "#87ffc4", "bold");
+    drawPanel(ctx, 0, 506, VIEW_W, 34, "rgba(9, 13, 31, 0.88)", "#4caf63");
+    drawText(ctx, `Level ${elapsed.toFixed(1)}s`, 18, 529, 14, "#ffffff", "bold");
+    drawText(ctx, `Run ${runElapsed.toFixed(1)}s`, 174, 529, 14, "#ffffff", "bold");
+    drawText(ctx, this.audio.muted ? "Muted" : "Sound on", 340, 529, 13, this.audio.muted ? "#ff9aa7" : "#87ffc4", "bold");
 
     if (this.isRollbackActive(time)) {
       const left = Math.max(0, (this.rollbackUntil - time) / 1000);
@@ -1233,7 +1267,9 @@ export class Game {
 
   private drawWinScreen(): void {
     const ctx = this.ctx;
-    const totalSeconds = ((performance.now() - this.runStartedAt) / 1000).toFixed(1);
+    const now = performance.now();
+    const runPauseAdjust = this.runPauseStart > 0 ? now - this.runPauseStart : 0;
+    const totalSeconds = Math.max(0, (now - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000).toFixed(1);
     const score = scoreRun({
       seconds: Number(totalSeconds),
       deaths: this.deaths,
