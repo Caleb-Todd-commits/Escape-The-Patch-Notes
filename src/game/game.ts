@@ -1125,7 +1125,7 @@ export class Game {
       drawText(ctx, `Best release score ${this.bestScore}`, 164, 342, 16, "#ffdc3f", "bold");
     }
     drawTextPill(ctx, "ENTER RELEASE BOARD", 480, 378, "#111827", "#ffdc3f");
-    drawText(ctx, "Space quick-starts Patch 1.0", 360, 420, 14, "#cde9ff", "bold");
+    drawText(ctx, "Space quick-starts Patch 1.0   T toggles touch controls", 176, 420, 13, "#cde9ff", "bold");
   }
 
   private drawReleaseBoard(): void {

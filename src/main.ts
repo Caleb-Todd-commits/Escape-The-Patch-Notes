@@ -1,5 +1,6 @@
 import "./styles.css";
 import { Game } from "./game/game";
+import { initTouchControls } from "./touch";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 const status = document.querySelector<HTMLElement>("#status");
@@ -10,3 +11,4 @@ if (!canvas) {
 
 const game = new Game(canvas, status ?? undefined);
 void game.boot();
+initTouchControls();

@@ -37,11 +37,95 @@ canvas {
   border: 2px solid rgba(129, 221, 255, 0.7);
   border-radius: 8px;
   background: #0b1024;
+  touch-action: none;
   box-shadow:
     0 24px 80px rgba(0, 0, 0, 0.58),
     0 0 0 4px rgba(24, 36, 90, 0.72),
     inset 0 0 0 2px rgba(255, 255, 255, 0.08);
 }
+
+/* ── Touch controls overlay ────────────────────────────────── */
+
+.tc-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* Matches canvas dimensions exactly so % values map to canvas coords */
+.tc-pad {
+  width: min(100vw - 24px, calc((100vh - 24px) * 16 / 9));
+  height: min(100vh - 24px, calc((100vw - 24px) * 9 / 16));
+  position: relative;
+  pointer-events: none;
+}
+
+/* Toggle pill — always visible, subtle when off */
+.tc-toggle {
+  position: absolute;
+  top: 1%;
+  right: 1%;
+  pointer-events: all;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.3);
+  font: bold 11px/1.4 ui-monospace, "SFMono-Regular", monospace;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.tc-on .tc-toggle {
+  color: #53d7ff;
+  border-color: rgba(83, 215, 255, 0.5);
+  background: rgba(83, 215, 255, 0.12);
+}
+
+/* Gameplay buttons — hidden by default, shown when tc-on */
+.tc-btn {
+  position: absolute;
+  pointer-events: all;
+  width: 10%;
+  aspect-ratio: 1;
+  min-width: 48px;
+  min-height: 48px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 1.25rem;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.06s, border-color 0.06s;
+}
+
+.tc-on .tc-btn {
+  display: flex;
+}
+
+.tc-btn:active {
+  background: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+/* Positions — left cluster: d-pad; right cluster: jump + pause */
+.tc-left  { bottom: 3%; left: 2%; }
+.tc-right { bottom: 3%; left: 14%; }
+.tc-jump  { bottom: 3%; right: 2%; }
+.tc-pause { bottom: 17%; right: 2%; }
 
 .sr-only {
   position: absolute;
