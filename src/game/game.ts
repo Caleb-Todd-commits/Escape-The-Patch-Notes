@@ -42,7 +42,8 @@ type GameMode =
   | "paused"
   | "levelComplete"
   | "gameOver"
-  | "gameComplete";
+  | "gameComplete"
+  | "settings";
 
 interface Player extends Rect {
   vx: number;
@@ -124,6 +125,16 @@ declare global {
   }
 }
 
+interface Bindings {
+  left: string;
+  right: string;
+  jump: string;
+  pause: string;
+}
+
+const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
+const SETTINGS_ROWS = 6; // name, left, right, jump, pause, touch
+
 const VIEW_W = 960;
 const VIEW_H = 540;
 const PLAYER_SPEED = 245;
@@ -182,6 +193,11 @@ export class Game {
   private levelPausedMs = 0;
   private runPauseStart = 0;
   private runPausedMs = 0;
+  private bindings: Bindings = loadBindings();
+  private playerName = loadPlayerName();
+  private settingsRow = 0;
+  private settingsPrevMode: GameMode = "title";
+  private rebindingFor: keyof Bindings | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -222,13 +238,26 @@ export class Game {
         return;
       }
 
-      if (event.code === "Escape" && (this.mode === "playing" || this.mode === "paused")) {
+      if (this.mode === "settings") {
+        this.handleSettingsInput(event.code);
+        return;
+      }
+
+      if (event.code === this.bindings.pause && (this.mode === "playing" || this.mode === "paused")) {
         this.setMode(this.mode === "playing" ? "paused" : "playing");
         return;
       }
 
       if (event.code === "Escape" && this.mode === "releaseBoard") {
         this.setMode("title");
+        return;
+      }
+
+      if (event.code === "KeyS" && !event.repeat && (this.mode === "title" || this.mode === "paused")) {
+        this.settingsPrevMode = this.mode;
+        this.settingsRow = 0;
+        this.rebindingFor = null;
+        this.setMode("settings");
         return;
       }
 
@@ -292,7 +321,7 @@ export class Game {
         }
       }
 
-      if (event.code === "Space" || event.code === "KeyW" || event.code === "ArrowUp") {
+      if (event.code === this.bindings.jump || event.code === "KeyW" || event.code === "ArrowUp") {
         this.jumpQueued = true;
       }
 
@@ -733,8 +762,8 @@ export class Game {
   }
 
   private inputAxis(): number {
-    const left = this.keys.has("KeyA") || this.keys.has("ArrowLeft");
-    const right = this.keys.has("KeyD") || this.keys.has("ArrowRight");
+    const left = this.keys.has(this.bindings.left) || this.keys.has("KeyA") || this.keys.has("ArrowLeft");
+    const right = this.keys.has(this.bindings.right) || this.keys.has("KeyD") || this.keys.has("ArrowRight");
     return Number(right) - Number(left);
   }
 
@@ -825,6 +854,12 @@ export class Game {
       return;
     }
 
+    if (this.mode === "settings") {
+      this.drawSettings();
+      ctx.restore();
+      return;
+    }
+
     this.drawWorld(ctx, time);
     this.drawHud(ctx, time);
 
@@ -833,7 +868,7 @@ export class Game {
     } else if (this.mode === "levelIntro") {
       this.drawPatchIntro();
     } else if (this.mode === "paused") {
-      this.drawCenteredPanel("Paused", "Press Esc to return to the release train");
+      this.drawCenteredPanel("Paused", "Esc continue   S settings   R restart");
     } else if (this.mode === "levelComplete") {
       this.drawLevelComplete();
     } else if (this.mode === "gameOver") {
@@ -1107,6 +1142,9 @@ export class Game {
     drawText(ctx, `Level ${elapsed.toFixed(1)}s`, 18, 529, 14, "#ffffff", "bold");
     drawText(ctx, `Run ${runElapsed.toFixed(1)}s`, 174, 529, 14, "#ffffff", "bold");
     drawText(ctx, this.audio.muted ? "Muted" : "Sound on", 340, 529, 13, this.audio.muted ? "#ff9aa7" : "#87ffc4", "bold");
+    if (this.playerName) {
+      drawText(ctx, this.playerName, 500, 529, 13, "#fff5d6");
+    }
 
     if (this.isRollbackActive(time)) {
       const left = Math.max(0, (this.rollbackUntil - time) / 1000);
@@ -1125,7 +1163,7 @@ export class Game {
       drawText(ctx, `Best release score ${this.bestScore}`, 164, 342, 16, "#ffdc3f", "bold");
     }
     drawTextPill(ctx, "ENTER RELEASE BOARD", 480, 378, "#111827", "#ffdc3f");
-    drawText(ctx, "Space quick-starts Patch 1.0   T toggles touch controls", 176, 420, 13, "#cde9ff", "bold");
+    drawText(ctx, "Space quick-starts · S settings · T touch controls", 186, 420, 13, "#cde9ff", "bold");
   }
 
   private drawReleaseBoard(): void {
@@ -1399,6 +1437,125 @@ export class Game {
     this.bonusChallengeActive = shouldShowBonusChallenge(this.levelProgress[this.level.id]);
   }
 
+  private handleSettingsInput(code: string): void {
+    if (this.rebindingFor !== null) {
+      if (code === "Escape") {
+        this.rebindingFor = null;
+      } else {
+        this.bindings = { ...this.bindings, [this.rebindingFor]: code };
+        saveBindings(this.bindings);
+        this.rebindingFor = null;
+      }
+      return;
+    }
+    if (code === "Escape") { this.setMode(this.settingsPrevMode); return; }
+    if (code === "ArrowUp")   { this.settingsRow = (this.settingsRow - 1 + SETTINGS_ROWS) % SETTINGS_ROWS; return; }
+    if (code === "ArrowDown") { this.settingsRow = (this.settingsRow + 1) % SETTINGS_ROWS; return; }
+    if (code === "Enter" || code === "Space") this.activateSettingsRow();
+  }
+
+  private activateSettingsRow(): void {
+    switch (this.settingsRow) {
+      case 0: this.editPlayerName(); break;
+      case 1: this.rebindingFor = "left"; break;
+      case 2: this.rebindingFor = "right"; break;
+      case 3: this.rebindingFor = "jump"; break;
+      case 4: this.rebindingFor = "pause"; break;
+      case 5: document.dispatchEvent(new CustomEvent("touchControlsToggle")); break;
+    }
+  }
+
+  private editPlayerName(): void {
+    const input = document.getElementById("name-input") as HTMLInputElement | null;
+    if (!input) return;
+    input.value = this.playerName;
+    input.classList.add("editing");
+    input.focus();
+    input.select();
+    const finish = () => {
+      const trimmed = input.value.trim().slice(0, 24);
+      this.playerName = trimmed;
+      savePlayerName(trimmed);
+      input.classList.remove("editing");
+      input.removeEventListener("keydown", onKey);
+      input.removeEventListener("blur", onBlur);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(); }
+    };
+    const onBlur = () => finish();
+    input.addEventListener("keydown", onKey);
+    input.addEventListener("blur", onBlur, { once: true });
+  }
+
+  private drawSettings(): void {
+    const ctx = this.ctx;
+    const row = this.settingsRow;
+    const rebinding = this.rebindingFor !== null;
+
+    drawPanel(ctx, 80, 26, 800, 488, "rgba(7, 10, 26, 0.95)", "#7767ff");
+    drawText(ctx, "SETTINGS", 118, 80, 30, "#ffffff", "bold");
+    drawText(ctx, "Esc  Back", 748, 80, 14, "#9fc7ff");
+
+    // ── Player Name ──────────────────────────────────────────
+    if (row === 0) {
+      ctx.fillStyle = "rgba(119,103,255,0.16)";
+      ctx.fillRect(98, 102, 764, 40);
+    }
+    drawText(ctx, "Player Name", 118, 130, 15, "#cde9ff", "bold");
+    drawPanel(ctx, 300, 107, 340, 28, "rgba(0,0,0,0.45)", row === 0 ? "#7767ff" : "#40517f");
+    drawText(ctx, this.playerName || "(no name set)", 314, 128, 14, this.playerName ? "#ffffff" : "#9fc7ff");
+    if (row === 0) drawText(ctx, "Enter to edit", 660, 130, 12, "#7767ff");
+
+    // ── Current Level ─────────────────────────────────────────
+    const patch = this.currentPatch();
+    drawText(ctx, `Level ${this.levelIndex + 1}  ·  ${this.level.title}  ·  ${patch.headline}`, 118, 164, 13, "rgba(156,199,255,0.7)");
+
+    // ── Controls ─────────────────────────────────────────────
+    drawText(ctx, "Controls", 118, 198, 14, "#ffffff", "bold");
+
+    const bindRows: Array<[number, string, keyof Bindings]> = [
+      [1, "Move Left",  "left"],
+      [2, "Move Right", "right"],
+      [3, "Jump",       "jump"],
+      [4, "Pause / Back", "pause"],
+    ];
+
+    for (const [rowIdx, label, action] of bindRows) {
+      const y = 213 + (rowIdx - 1) * 34;
+      const isRow = row === rowIdx;
+      const isRebinding = isRow && rebinding && this.rebindingFor === action;
+
+      if (isRow) {
+        ctx.fillStyle = "rgba(119,103,255,0.16)";
+        ctx.fillRect(98, y - 2, 764, 30);
+      }
+      drawText(ctx, label, 118, y + 18, 14, isRow ? "#ffffff" : "#cde9ff", "bold");
+      const pillBorder = isRebinding ? "#ffdc3f" : isRow ? "#7767ff" : "#40517f";
+      const pillText = isRebinding ? "Press any key…" : keyLabel(this.bindings[action]);
+      drawPanel(ctx, 350, y + 2, 200, 22, "rgba(0,0,0,0.45)", pillBorder);
+      drawText(ctx, pillText, 360, y + 18, 12, isRebinding ? "#ffdc3f" : "#cde9ff", "bold");
+      if (isRow && !isRebinding) drawText(ctx, "Enter to rebind", 564, y + 18, 11, "#7767ff");
+    }
+
+    drawText(ctx, "Jump also accepts: W · ↑ Arrow", 118, 355, 12, "rgba(156,199,255,0.45)");
+
+    // ── Touch Controls ────────────────────────────────────────
+    drawText(ctx, "Options", 118, 380, 14, "#ffffff", "bold");
+    const touchOn = isTouchEnabled();
+    if (row === 5) {
+      ctx.fillStyle = "rgba(119,103,255,0.16)";
+      ctx.fillRect(98, 390, 764, 38);
+    }
+    drawText(ctx, "Touch Controls", 118, 416, 14, row === 5 ? "#ffffff" : "#cde9ff", "bold");
+    const touchBorder = touchOn ? "#87ffc4" : "#ff9aa7";
+    drawPanel(ctx, 340, 394, 80, 22, "rgba(0,0,0,0.45)", touchBorder);
+    drawText(ctx, touchOn ? "ON" : "OFF", touchOn ? 354 : 352, 410, 13, touchBorder, "bold");
+    if (row === 5) drawText(ctx, "Enter to toggle", 434, 410, 11, "#7767ff");
+
+    drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 462, 12, "rgba(156,199,255,0.4)");
+  }
+
   private installDebugHooks(): void {
     if (!import.meta.env.DEV) {
       return;
@@ -1653,6 +1810,55 @@ function severityColor(severity: LevelPatch["severity"]): string {
   if (severity === "major") return "#ff9a3d";
   if (severity === "rollback") return "#70f5ff";
   return "#ff4f81";
+}
+
+// ── Settings persistence ──────────────────────────────────────
+
+const BINDINGS_KEY = "escapePatchNotesBindings";
+const PLAYER_NAME_KEY = "escapePatchNotesName";
+
+function loadBindings(): Bindings {
+  try {
+    const raw = localStorage.getItem(BINDINGS_KEY);
+    if (!raw) return { ...DEFAULT_BINDINGS };
+    const p = JSON.parse(raw) as Partial<Bindings>;
+    return {
+      left:  typeof p.left  === "string" ? p.left  : DEFAULT_BINDINGS.left,
+      right: typeof p.right === "string" ? p.right : DEFAULT_BINDINGS.right,
+      jump:  typeof p.jump  === "string" ? p.jump  : DEFAULT_BINDINGS.jump,
+      pause: typeof p.pause === "string" ? p.pause : DEFAULT_BINDINGS.pause,
+    };
+  } catch { return { ...DEFAULT_BINDINGS }; }
+}
+
+function saveBindings(b: Bindings): void {
+  try { localStorage.setItem(BINDINGS_KEY, JSON.stringify(b)); } catch {}
+}
+
+function loadPlayerName(): string {
+  try { return localStorage.getItem(PLAYER_NAME_KEY) ?? ""; } catch { return ""; }
+}
+
+function savePlayerName(name: string): void {
+  try { localStorage.setItem(PLAYER_NAME_KEY, name); } catch {}
+}
+
+function isTouchEnabled(): boolean {
+  try { return localStorage.getItem("escapePatchNotesTouch") === "true"; } catch { return false; }
+}
+
+function keyLabel(code: string): string {
+  const map: Record<string, string> = {
+    ArrowLeft: "← Arrow", ArrowRight: "→ Arrow", ArrowUp: "↑ Arrow", ArrowDown: "↓ Arrow",
+    Space: "Space", Escape: "Escape", Enter: "Enter", Tab: "Tab",
+    ShiftLeft: "L Shift", ShiftRight: "R Shift",
+    ControlLeft: "L Ctrl", ControlRight: "R Ctrl",
+    AltLeft: "L Alt", AltRight: "R Alt",
+  };
+  if (code in map) return map[code];
+  if (/^Key[A-Z]$/.test(code)) return code[3];
+  if (/^Digit\d$/.test(code)) return code[5];
+  return code;
 }
 
 class AudioBus {

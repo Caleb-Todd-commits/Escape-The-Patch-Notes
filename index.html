@@ -13,6 +13,15 @@
     <main id="app">
       <canvas id="game" width="960" height="540" aria-label="Escape the Patch Notes game canvas"></canvas>
       <div id="status" class="sr-only" aria-live="polite">Loading game</div>
+      <input
+        id="name-input"
+        type="text"
+        maxlength="24"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Enter your name"
+        aria-label="Player name"
+      />
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

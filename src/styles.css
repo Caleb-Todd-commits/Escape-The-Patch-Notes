@@ -127,6 +127,33 @@ canvas {
 .tc-jump  { bottom: 3%; right: 2%; }
 .tc-pause { bottom: 17%; right: 2%; }
 
+/* Player name input — shown only when editing name in settings */
+#name-input {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 200;
+  display: none;
+  background: rgba(9, 13, 31, 0.97);
+  border: 2px solid #7767ff;
+  border-radius: 6px;
+  color: #ffffff;
+  font: bold 20px/1 ui-monospace, "SFMono-Regular", monospace;
+  padding: 14px 20px;
+  width: clamp(240px, 40vw, 380px);
+  outline: none;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+}
+
+#name-input.editing {
+  display: block;
+}
+
+#name-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

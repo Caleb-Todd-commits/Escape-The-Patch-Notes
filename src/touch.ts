@@ -29,6 +29,9 @@ export function initTouchControls(): void {
     toggle();
   });
 
+  // Settings screen drives the toggle via custom event
+  document.addEventListener("touchControlsToggle", toggle);
+
   window.addEventListener("keydown", (e) => {
     if (e.code === "KeyT" && !e.repeat) toggle();
   });
