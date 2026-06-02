@@ -8,3 +8,4 @@ playwright-report/
 !.env.example
 *.log
 Escape The Patch Notes/
+.vercel
