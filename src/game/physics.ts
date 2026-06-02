@@ -51,10 +51,10 @@ export function isPlatformActive(platform: TimedPlatform, elapsed: number): bool
 
 export function jumpImpulseForModifier(modifier: PatchModifier, rollbackActive = false): number {
   if (!rollbackActive && (modifier === "jump_nerf" || modifier === "finale_combo")) {
-    return 430;
+    return 490;
   }
 
-  return 500;
+  return 580;
 }
 
 export function frictionForModifier(modifier: PatchModifier, rollbackActive = false): number {
