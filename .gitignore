@@ -1,0 +1,10 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+Escape The Patch Notes/
