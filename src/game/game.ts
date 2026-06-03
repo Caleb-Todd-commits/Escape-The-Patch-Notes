@@ -179,6 +179,8 @@ export class Game {
   private rollbackUntil = 0;
   private magnetPulses: MagnetPulse[] = [];
   private huntUntil = 0;
+  private themeFlashUntil = 0;
+  private themeFlashColor = "";
   private particles: Particle[] = [];
   private shakeUntil = 0;
   private shakeMagnitude = 0;
@@ -883,6 +885,18 @@ export class Game {
     this.beginLevelAttempt();
     this.levelIntroUntil = time + LEVEL_INTRO_MS;
     this.setMode("levelIntro");
+    const prevTheme = this.audio.currentThemeKey;
+    this.audio.switchTheme(this.level.modifier);
+    if (this.audio.currentThemeKey !== prevTheme) {
+      const themeColors: Record<string, string> = {
+        frantic: "255,80,80", eerie: "120,80,220", rolling: "80,200,120", wind: "100,160,255",
+      };
+      const color = themeColors[this.audio.currentThemeKey];
+      if (color) {
+        this.themeFlashColor = color;
+        this.themeFlashUntil = time + 700;
+      }
+    }
     this.audio.play("intro");
   }
 
@@ -1021,6 +1035,14 @@ export class Game {
     gradient.addColorStop(1, "#080814");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    // Theme-switch flash: brief colored vignette when music theme changes
+    if (this.themeFlashUntil > time && this.themeFlashColor) {
+      const progress = 1 - (this.themeFlashUntil - time) / 700;
+      const alpha = Math.max(0, 0.28 * (1 - progress * progress));
+      ctx.fillStyle = `rgba(${this.themeFlashColor}, ${alpha.toFixed(3)})`;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
 
     // Star field tinted to match the level's color palette
     ctx.fillStyle = `rgba(${hexLighter(bg, 110)}, 0.18)`;
@@ -2216,26 +2238,68 @@ class AudioBus {
   private musicTimer = 0;
   private musicRunning = false;
 
-  // Two-voice chiptune in C minor — lead (32 notes) + bass (16 notes at 2× beat)
-  // Lead: urgent ascending hook, development, climax, return (C Aeolian)
-  private static readonly LEAD = [
-    392, 523, 622, 784,   831, 784, 622, 587,
-    523, 622, 698, 784,   698, 622, 587, 523,
-    784, 831, 784, 698,   622, 698, 784, 0,
-    523, 587, 622, 784,   698, 622, 587, 523,
-  ];
-  // Bass: two notes per bar, root-fifth motion supporting the melody
-  private static readonly BASS = [
-    262, 392,   415, 311,
-    262, 349,   392, 0,
-    262, 311,   349, 392,
-    415, 392,   262, 262,
-  ];
-  private static readonly BEAT = 0.165;
+  // Five music themes — each has lead (32 notes), bass (16 notes), beat interval
+  private static readonly THEMES = {
+    // tense: C Aeolian, default for standard levels
+    tense: {
+      lead: [392, 523, 622, 784,   831, 784, 622, 587,   523, 622, 698, 784,   698, 622, 587, 523,
+             784, 831, 784, 698,   622, 698, 784, 0,     523, 587, 622, 784,   698, 622, 587, 523],
+      bass: [262, 392,   415, 311,   262, 349,   392, 0,   262, 311,   349, 392,   415, 392,   262, 262],
+      beat: 0.165,
+    },
+    // frantic: faster, chromatic urgency — coin magnet, crumbling, finales
+    frantic: {
+      lead: [523, 587, 622, 784,   831, 784, 622, 523,   622, 784, 831, 932,   831, 784, 622, 523,
+             784, 831, 932, 831,   698, 784, 831, 698,   622, 698, 784, 831,   784, 622, 523, 622],
+      bass: [262, 415,   466, 311,   262, 415,   392, 311,   311, 466,   415, 466,   466, 392,   262, 415],
+      beat: 0.128,
+    },
+    // eerie: whole-tone intervals, spacious — rotated gravity, async, wide/tall
+    eerie: {
+      lead: [415, 523, 659, 784,   0, 784, 659, 523,   523, 659, 831, 0,     932, 831, 659, 523,
+             659, 784, 932, 784,   659, 523, 415, 0,   523, 415, 554, 659,   784, 659, 554, 415],
+      bass: [207, 311,   415, 554,   207, 415,   554, 0,   311, 415,   554, 415,   311, 207,   311, 207],
+      beat: 0.200,
+    },
+    // rolling: driving arpeggios — moving platforms, moving exit
+    rolling: {
+      lead: [523, 659, 784, 523,   659, 784, 880, 659,   784, 880, 932, 784,   880, 784, 659, 523,
+             622, 784, 932, 784,   622, 523, 415, 523,   659, 784, 880, 784,   659, 523, 622, 523],
+      bass: [262, 392,   523, 392,   311, 466,   523, 466,   262, 392,   466, 392,   349, 523,   466, 349],
+      beat: 0.148,
+    },
+    // wind: wavering suspended harmony — headwind levels
+    wind: {
+      lead: [466, 523, 587, 523,   466, 415, 466, 523,   587, 622, 587, 523,   466, 415, 392, 415,
+             466, 523, 587, 622,   587, 523, 466, 415,   392, 415, 466, 523,   587, 523, 466, 392],
+      bass: [233, 349,   392, 311,   233, 311,   349, 233,   311, 349,   392, 349,   311, 233,   311, 233],
+      beat: 0.178,
+    },
+  } as const;
 
+  themeKey: keyof typeof AudioBus.THEMES = "tense";
+  get currentThemeKey() { return this.themeKey; }
   private bassGain?: GainNode;
   private bassBeat = 0;
   private bassNextTime = 0;
+
+  switchTheme(modifier: PatchModifier): void {
+    const key = AudioBus.themeKeyFor(modifier);
+    if (key === this.themeKey) return;
+    this.themeKey = key;
+    // Reset beat counters — pumpMusic will pick up the new arrays on next tick
+    // (notes already queued in the audio buffer play out naturally, ~0.4s max)
+    this.musicBeat = 0;
+    this.bassBeat = 0;
+  }
+
+  private static themeKeyFor(mod: PatchModifier): keyof typeof AudioBus.THEMES {
+    if (mod === "coin_spike_magnet" || mod === "crumbling_platforms" || mod === "finale_combo") return "frantic";
+    if (mod === "rotated_gravity" || mod === "async_platforms" || mod === "wide_world" || mod === "tall_world") return "eerie";
+    if (mod === "moving_platforms_h" || mod === "moving_exit") return "rolling";
+    if (mod === "headwind") return "wind";
+    return "tense";
+  }
 
   toggle(): void {
     this.muted = !this.muted;
@@ -2271,11 +2335,14 @@ class AudioBus {
   private pumpMusic(): void {
     if (!this.ctx || !this.musicGain || !this.musicRunning) return;
     const ahead = 0.4;
-    const beat = AudioBus.BEAT;
+    const theme = AudioBus.THEMES[this.themeKey];
+    const { beat } = theme;
+    const lead = theme.lead as readonly number[];
+    const bass = theme.bass as readonly number[];
 
     // Schedule lead notes
     while (this.musicNextTime < this.ctx.currentTime + ahead) {
-      const freq = AudioBus.LEAD[this.musicBeat % AudioBus.LEAD.length];
+      const freq = lead[this.musicBeat % lead.length];
       if (freq > 0) this.scheduleNote(this.musicNextTime, freq, beat * 0.74, this.musicGain!, "square");
       this.musicBeat++;
       this.musicNextTime += beat;
@@ -2284,7 +2351,7 @@ class AudioBus {
     // Schedule bass notes at 2× beat interval
     if (this.bassGain) {
       while (this.bassNextTime < this.ctx.currentTime + ahead) {
-        const freq = AudioBus.BASS[this.bassBeat % AudioBus.BASS.length];
+        const freq = bass[this.bassBeat % bass.length];
         if (freq > 0) this.scheduleNote(this.bassNextTime, freq, beat * 1.7, this.bassGain, "triangle");
         this.bassBeat++;
         this.bassNextTime += beat * 2;
