@@ -134,7 +134,8 @@ interface Bindings {
 }
 
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
-const SETTINGS_ROWS = 6; // name, left, right, jump, pause, touch
+const SETTINGS_ROWS = 7; // name, left, right, jump, pause, touch, game select
+const RELEASE_BOARD_PAGE_SIZE = 10;
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -199,6 +200,7 @@ export class Game {
   private settingsRow = 0;
   private settingsPrevMode: GameMode = "title";
   private rebindingFor: keyof Bindings | null = null;
+  private jumpToLevelValue = 1;
   private facing: "right" | "left" = "right";
   private camera = { x: 0, y: 0 };
   private hotSpots: Array<{ x: number; y: number; w: number; h: number; action: () => void }> = [];
@@ -792,13 +794,28 @@ export class Game {
   }
 
   private handleBoardInput(code: string): void {
-    const columns = 3;
+    const columns = 2;
     const current = this.boardSelection;
+    const range = boardPageRange(current, levels.length);
 
-    if (code === "ArrowLeft") this.boardSelection = clamp(current - 1, 0, levels.length - 1);
-    if (code === "ArrowRight") this.boardSelection = clamp(current + 1, 0, levels.length - 1);
-    if (code === "ArrowUp") this.boardSelection = clamp(current - columns, 0, levels.length - 1);
-    if (code === "ArrowDown") this.boardSelection = clamp(current + columns, 0, levels.length - 1);
+    if (code === "ArrowLeft") {
+      this.boardSelection = current > range.start ? current - 1 : previousBoardPageStart(current, levels.length);
+    }
+    if (code === "ArrowRight") {
+      this.boardSelection = current < range.end ? current + 1 : nextBoardPageStart(current, levels.length);
+    }
+    if (code === "ArrowUp") {
+      this.boardSelection = current - columns >= range.start ? current - columns : current;
+    }
+    if (code === "ArrowDown") {
+      this.boardSelection = current + columns <= range.end ? current + columns : current;
+    }
+    if (code === "PageUp" || code === "KeyQ") {
+      this.boardSelection = previousBoardPageStart(current, levels.length);
+    }
+    if (code === "PageDown" || code === "KeyE") {
+      this.boardSelection = nextBoardPageStart(current, levels.length);
+    }
 
     if (code === "Enter" || code === "Space" || code === "KeyR") {
       this.startRunAt(this.boardSelection);
@@ -1231,7 +1248,7 @@ export class Game {
     const runElapsed = Math.max(0, (time - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000);
 
     drawPanel(ctx, 18, 18, 430, 104, "rgba(9, 13, 31, 0.82)", "#53d7ff");
-    drawText(ctx, `${this.level.title} - ${patch.headline}`, 34, 44, 20, "#ffffff", "bold");
+    drawText(ctx, truncateText(`${this.level.title} - ${patch.headline}`, 32), 34, 44, 20, "#ffffff", "bold");
     drawWrappedText(ctx, patch.note, 34, 68, 386, 16, "#cde9ff");
     drawText(ctx, severityLabel(patch.severity), 346, 106, 14, severityColor(patch.severity), "bold");
 
@@ -1250,11 +1267,11 @@ export class Game {
     drawText(ctx, `${this.deaths} deaths`, 820, 64, 13, "#ff9aa7", "bold");
 
     // Release-train progress track
-    const dotW = 11;
-    const dotGap = 3;
+    const dotGap = 2;
+    const dotW = Math.max(4, Math.floor((270 - (levels.length - 1) * dotGap) / levels.length));
     const trainX = 670;
     const trainY = 76;
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < levels.length; i++) {
       const lprog = this.levelProgress[levels[i]?.id];
       let dotColor: string;
       if (i === this.levelIndex && this.mode === "playing") {
@@ -1312,34 +1329,58 @@ export class Game {
     const completed = levels.filter((level) => this.levelProgress[level.id]?.completed).length;
     const reports = levels.filter((level) => this.levelProgress[level.id]?.reportCollected).length;
     const golds = levels.filter((level) => this.levelProgress[level.id]?.bestMedal === "gold").length;
-    const selected = levels[this.boardSelection];
-    const selectedPatch = this.run.levels[this.boardSelection];
+    const selected = levels[this.boardSelection] ?? levels[0];
+    const selectedPatch = this.run.levels[this.boardSelection] ?? this.run.levels[0];
     const selectedProgress = this.levelProgress[selected.id];
+    const range = boardPageRange(this.boardSelection, levels.length);
+    const pageFirstPatch = this.run.levels[range.start] ?? selectedPatch;
+    const pageLastPatch = this.run.levels[range.end] ?? selectedPatch;
 
     drawPanel(ctx, 36, 30, 888, 488, "rgba(7, 10, 26, 0.92)", "#70f5ff");
     drawText(ctx, "RELEASE BOARD", 68, 78, 34, "#ffffff", "bold");
     drawPanel(ctx, 796, 54, 106, 28, "rgba(0,0,0,0.4)", "#70f5ff");
     drawText(ctx, "← Title", 808, 73, 13, "#70f5ff", "bold");
     this.hot(796, 54, 106, 28, () => this.setMode("title"));
-    drawText(ctx, `${completed}/11 shipped`, 554, 62, 15, "#87ffc4", "bold");
-    drawText(ctx, `${reports}/11 reports`, 554, 84, 15, "#fff5d6", "bold");
-    drawText(ctx, `${golds}/11 gold`, 724, 62, 15, "#ffdc3f", "bold");
+    drawText(ctx, `${completed}/${levels.length} shipped`, 532, 62, 15, "#87ffc4", "bold");
+    drawText(ctx, `${reports}/${levels.length} reports`, 532, 84, 15, "#fff5d6", "bold");
+    drawText(ctx, `${golds}/${levels.length} gold`, 700, 62, 15, "#ffdc3f", "bold");
     drawText(ctx, `Best ${this.bestScore || "--"}`, 724, 84, 15, "#cde9ff", "bold");
-    drawText(ctx, "Arrows select   Enter deploy selected patch   Esc title", 68, 112, 14, "#9fc7ff", "bold");
+    drawText(ctx, `Slide ${range.page + 1}/${range.totalPages}: Patch ${pageFirstPatch.version}-${pageLastPatch.version}`, 68, 108, 16, "#fff5d6", "bold");
+    drawText(ctx, "Arrows select   Q/E change slide   Enter deploy selected patch   Esc title", 68, 128, 12, "#9fc7ff", "bold");
 
-    const columns = 3;
-    const cardW = 278;
+    const canPrev = range.page > 0;
+    const canNext = range.page < range.totalPages - 1;
+    drawPanel(ctx, 54, 250, 44, 74, "rgba(0,0,0,0.32)", canPrev ? "#70f5ff" : "#40517f");
+    drawText(ctx, "<", 70, 296, 28, canPrev ? "#70f5ff" : "#40517f", "bold");
+    if (canPrev) {
+      this.hot(54, 250, 44, 74, () => {
+        this.boardSelection = previousBoardPageStart(this.boardSelection, levels.length);
+        this.setStatus();
+      });
+    }
+    drawPanel(ctx, 862, 250, 44, 74, "rgba(0,0,0,0.32)", canNext ? "#70f5ff" : "#40517f");
+    drawText(ctx, ">", 878, 296, 28, canNext ? "#70f5ff" : "#40517f", "bold");
+    if (canNext) {
+      this.hot(862, 250, 44, 74, () => {
+        this.boardSelection = nextBoardPageStart(this.boardSelection, levels.length);
+        this.setStatus();
+      });
+    }
+
+    const columns = 2;
+    const cardW = 356;
     const cardH = 58;
-    const startX = 68;
-    const startY = 118;
-    const gapX = 14;
-    const gapY = 7;
+    const startX = 118;
+    const startY = 146;
+    const gapX = 20;
+    const gapY = 8;
 
-    for (let index = 0; index < levels.length; index += 1) {
+    for (let index = range.start; index <= range.end; index += 1) {
       const level = levels[index];
-      const patch = this.run.levels[index];
-      const col = index % columns;
-      const row = Math.floor(index / columns);
+      const patch = this.run.levels[index] ?? this.run.levels[0];
+      const local = index - range.start;
+      const col = local % columns;
+      const row = Math.floor(local / columns);
       const cx = startX + col * (cardW + gapX);
       const cy = startY + row * (cardH + gapY);
       this.drawReleaseCard(
@@ -1360,14 +1401,14 @@ export class Game {
       });
     }
 
-    drawPanel(ctx, 68, 456, 856, 34, "rgba(12, 17, 39, 0.8)", selectedProgress?.completed ? "#ff9aa7" : "#87ffc4");
+    drawPanel(ctx, 68, 476, 856, 34, "rgba(12, 17, 39, 0.8)", selectedProgress?.completed ? "#ff9aa7" : "#87ffc4");
     drawText(
       ctx,
       selectedProgress?.completed
         ? `Selected Patch ${selectedPatch.version}: replay challenge unlocked. File the bug report for better medals.`
         : `Selected Patch ${selectedPatch.version}: first pass objective is only to reach the exit.`,
       84,
-      479,
+      499,
       14,
       selectedProgress?.completed ? "#ff9aa7" : "#87ffc4",
       "bold",
@@ -1437,7 +1478,7 @@ export class Game {
     drawPanel(ctx, 176, 148, 608, 244, "rgba(7, 10, 26, 0.93)", "#ff4f81");
     drawText(ctx, "GAME OVER", 228, 200, 36, "#ffffff", "bold");
     drawText(ctx, this.lastDeathReason || "Patch rejected", 228, 238, 16, "#ffdc3f", "bold");
-    drawText(ctx, `${this.level.title} · Level ${this.levelIndex + 1}/11 · ${this.deaths} run deaths`, 228, 264, 14, "#9fc7ff");
+    drawText(ctx, `${this.level.title} · Level ${this.levelIndex + 1}/${levels.length} · ${this.deaths} run deaths`, 228, 264, 14, "#9fc7ff");
     drawWrappedText(ctx, this.run.gameOverSummary, 228, 290, 520, 16, "#cde9ff");
     drawPanel(ctx, 346, 346, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
     drawText(ctx, "Restart →", 358, 365, 13, "#ff4f81", "bold");
@@ -1502,29 +1543,30 @@ export class Game {
     drawText(ctx, `Time ${totalSeconds}s   Deaths ${this.deaths}   Coins ${this.totalCoins}`, 100, 148, 15, "#cde9ff", "bold");
 
     drawText(ctx, "Release Record", 100, 176, 14, "#ffffff", "bold");
-    const colW = 266;
+    const columns = 5;
+    const colW = 160;
     const gridX = 100;
     const gridY = 194;
     const rowH = 20;
     for (let i = 0; i < this.results.length && i < levels.length; i++) {
       const result = this.results[i];
-      const col = i % 3;
-      const row = Math.floor(i / 3);
+      const col = i % columns;
+      const row = Math.floor(i / columns);
       const rx = gridX + col * colW;
       const ry = gridY + row * rowH;
       drawText(ctx, result.patch, rx, ry, 13, "#9fc7ff", "bold");
-      drawText(ctx, result.medal.slice(0, 4).toUpperCase(), rx + 40, ry, 13, medalColor(result.medal), "bold");
-      drawText(ctx, `${result.seconds.toFixed(1)}s`, rx + 96, ry, 12, "#fff5d6");
-      if (result.report) drawText(ctx, "BUG", rx + 150, ry, 11, "#ff9aa7", "bold");
+      drawText(ctx, result.medal.slice(0, 3).toUpperCase(), rx + 38, ry, 12, medalColor(result.medal), "bold");
+      drawText(ctx, `${result.seconds.toFixed(1)}s`, rx + 76, ry, 11, "#fff5d6");
+      if (result.report) drawText(ctx, "BUG", rx + 122, ry, 10, "#ff9aa7", "bold");
     }
 
-    let ry = 310;
+    let ry = 332;
     for (const prompt of this.run.recapPrompts.slice(0, 3)) {
       drawText(ctx, `- ${prompt}`, 100, ry, 14, "#fff5d6");
       ry += 22;
     }
 
-    drawText(ctx, this.shareUrl, 100, 378, 11, "#9fc7ff", "bold");
+    drawText(ctx, this.shareUrl, 100, 404, 11, "#9fc7ff", "bold");
 
     drawTextPill(ctx, "R  NEW RUN", 228, 462, "#111827", "#ffdc3f");
     this.hot(116, 442, 224, 34, () => { this.startRunAt(0); this.audio.play("start"); });
@@ -1621,6 +1663,10 @@ export class Game {
       return;
     }
     if (code === "Escape") { this.setMode(this.settingsPrevMode); return; }
+    if (this.settingsRow === 6) {
+      if (code === "ArrowLeft")  { this.jumpToLevelValue = Math.max(1, this.jumpToLevelValue - 1); return; }
+      if (code === "ArrowRight") { this.jumpToLevelValue = Math.min(levels.length, this.jumpToLevelValue + 1); return; }
+    }
     if (code === "ArrowUp")   { this.settingsRow = (this.settingsRow - 1 + SETTINGS_ROWS) % SETTINGS_ROWS; return; }
     if (code === "ArrowDown") { this.settingsRow = (this.settingsRow + 1) % SETTINGS_ROWS; return; }
     if (code === "Enter" || code === "Space") this.activateSettingsRow();
@@ -1634,6 +1680,10 @@ export class Game {
       case 3: this.rebindingFor = "jump"; break;
       case 4: this.rebindingFor = "pause"; break;
       case 5: document.dispatchEvent(new CustomEvent("touchControlsToggle")); break;
+      case 6:
+        this.startRunAt(this.jumpToLevelValue - 1);
+        this.audio.play("start");
+        break;
     }
   }
 
@@ -1734,7 +1784,30 @@ export class Game {
     if (row === 5) drawText(ctx, "Enter to toggle", 434, 410, 11, "#7767ff");
     this.hot(98, 390, 764, 38, () => { this.settingsRow = 5; this.activateSettingsRow(); });
 
-    drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 462, 12, "rgba(156,199,255,0.4)");
+    if (row === 6) {
+      ctx.fillStyle = "rgba(119,103,255,0.16)";
+      ctx.fillRect(98, 428, 764, 44);
+    }
+    drawText(ctx, "Jump to Level", 118, 454, 14, row === 6 ? "#ffffff" : "#cde9ff", "bold");
+    // ← [N] → picker
+    const jtl = this.jumpToLevelValue;
+    const jtlPatch = this.run.levels[jtl - 1];
+    const jtlSelected = row === 6;
+    drawPanel(ctx, 296, 433, 24, 22, "rgba(0,0,0,0.4)", jtlSelected ? "#7767ff" : "#40517f");
+    drawText(ctx, "‹", 302, 449, 14, jtlSelected ? "#cde9ff" : "#40517f", "bold");
+    drawPanel(ctx, 324, 433, 72, 22, "rgba(0,0,0,0.4)", jtlSelected ? "#ffdc3f" : "#40517f");
+    drawText(ctx, String(jtl), 348, 449, 13, "#ffffff", "bold");
+    drawPanel(ctx, 400, 433, 24, 22, "rgba(0,0,0,0.4)", jtlSelected ? "#7767ff" : "#40517f");
+    drawText(ctx, "›", 406, 449, 14, jtlSelected ? "#cde9ff" : "#40517f", "bold");
+    if (jtlPatch) {
+      drawText(ctx, `${jtlPatch.version} — ${jtlPatch.headline.slice(0, 38)}`, 436, 449, 12, "#cde9ff");
+    }
+    if (jtlSelected) drawText(ctx, "Enter to launch", 436, 463, 11, "#7767ff");
+    this.hot(296, 433, 24, 22, () => { this.jumpToLevelValue = Math.max(1, jtl - 1); this.settingsRow = 6; });
+    this.hot(400, 433, 24, 22, () => { this.jumpToLevelValue = Math.min(levels.length, jtl + 1); this.settingsRow = 6; });
+    this.hot(324, 433, 72, 22, () => { this.settingsRow = 6; this.activateSettingsRow(); });
+
+    drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 494, 12, "rgba(156,199,255,0.4)");
   }
 
   private installDebugHooks(): void {
@@ -1816,10 +1889,20 @@ async function loadRun(): Promise<PatchRun> {
       return fallback;
     }
 
-    return (await response.json()) as PatchRun;
+    const candidate = await response.json();
+    return isCompatibleRun(candidate) ? candidate : fallback;
   } catch {
     return fallback;
   }
+}
+
+function isCompatibleRun(value: unknown): value is PatchRun {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as PatchRun).levels) &&
+    (value as PatchRun).levels.length === levels.length
+  );
 }
 
 function loadBestScore(): number {
@@ -1856,6 +1939,30 @@ function saveLevelProgress(progress: LevelProgressMap): void {
 
 function formatTime(seconds: number | undefined): string {
   return seconds === undefined ? "--" : `${seconds.toFixed(1)}s`;
+}
+
+function truncateText(text: string, maxLength: number): string {
+  return text.length <= maxLength ? text : `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function boardPageRange(selection: number, totalLevels: number): { page: number; totalPages: number; start: number; end: number } {
+  const totalPages = Math.max(1, Math.ceil(totalLevels / RELEASE_BOARD_PAGE_SIZE));
+  const page = clamp(Math.floor(selection / RELEASE_BOARD_PAGE_SIZE), 0, totalPages - 1);
+  const start = page * RELEASE_BOARD_PAGE_SIZE;
+  const end = Math.min(totalLevels - 1, start + RELEASE_BOARD_PAGE_SIZE - 1);
+  return { page, totalPages, start, end };
+}
+
+function previousBoardPageStart(selection: number, totalLevels: number): number {
+  const range = boardPageRange(selection, totalLevels);
+  const page = clamp(range.page - 1, 0, range.totalPages - 1);
+  return page * RELEASE_BOARD_PAGE_SIZE;
+}
+
+function nextBoardPageStart(selection: number, totalLevels: number): number {
+  const range = boardPageRange(selection, totalLevels);
+  const page = clamp(range.page + 1, 0, range.totalPages - 1);
+  return page * RELEASE_BOARD_PAGE_SIZE;
 }
 
 function releaseBoardLabel(modifier: PatchModifier): string {
