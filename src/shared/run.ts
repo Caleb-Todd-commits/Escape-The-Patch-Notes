@@ -10,6 +10,10 @@ export const patchModifiers = [
   "rollback_token",
   "moving_exit",
   "finale_combo",
+  "wide_world",
+  "tall_world",
+  "moving_platforms_h",
+  "headwind",
 ] as const;
 
 export type PatchModifier = (typeof patchModifiers)[number];
@@ -56,6 +60,10 @@ export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "jok
   { levelId: 9, version: "1.8", modifier: "rollback_token", targetTime: 44 },
   { levelId: 10, version: "1.9", modifier: "moving_exit", targetTime: 46 },
   { levelId: 11, version: "2.0", modifier: "finale_combo", targetTime: 70 },
+  { levelId: 12, version: "2.1", modifier: "wide_world", targetTime: 56 },
+  { levelId: 13, version: "2.2", modifier: "tall_world", targetTime: 70 },
+  { levelId: 14, version: "2.3", modifier: "moving_platforms_h", targetTime: 62 },
+  { levelId: 15, version: "2.4", modifier: "headwind", targetTime: 46 },
 ];
 
 const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "severity">> = [
@@ -123,6 +131,30 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     headline: "Everything is stable now",
     note: "All previous fixes have been reintroduced in one confidence-building bundle.",
     joke: "Stability has been defined as all errors happening together.",
+    severity: "critical",
+  },
+  {
+    headline: "Map boundary expanded",
+    note: "The level footprint now exceeds the original specification. Scroll to explore.",
+    joke: "Out of viewport, out of mind.",
+    severity: "minor",
+  },
+  {
+    headline: "Vertical scope approved",
+    note: "Progress now requires upward mobility. The exit has been promoted.",
+    joke: "What goes up has not been nerfed. Yet.",
+    severity: "major",
+  },
+  {
+    headline: "Platforms migrated to async delivery",
+    note: "Infrastructure components are now in transit. Timing is a feature.",
+    joke: "Stand still and the floor leaves you.",
+    severity: "major",
+  },
+  {
+    headline: "Lateral air resistance enabled",
+    note: "A persistent headwind has been introduced to reduce leftward throughput.",
+    joke: "The wind is not a bug. It is a stakeholder.",
     severity: "critical",
   },
 ];

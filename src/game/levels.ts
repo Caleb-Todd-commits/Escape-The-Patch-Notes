@@ -1,7 +1,7 @@
 import type { PatchModifier } from "../shared/run";
 import type { Rect } from "./physics";
 
-export type PlatformKind = "solid" | "crumbling" | "async";
+export type PlatformKind = "solid" | "crumbling" | "async" | "moving";
 export type GravityMode = "down" | "right";
 
 export interface Platform extends Rect {
@@ -11,6 +11,8 @@ export interface Platform extends Rect {
   on?: number;
   off?: number;
   phase?: number;
+  moveRange?: number;
+  moveSpeed?: number;
 }
 
 export interface Coin {
@@ -66,6 +68,7 @@ export interface LevelDefinition {
   gates?: Rect[];
   bounds: Rect;
   background: string;
+  wind?: number;
 }
 
 const ground = (id: string, y = 500, w = 960): Platform => ({
@@ -121,6 +124,17 @@ const token = (id: string, x: number, y: number, seconds = 4.4): RollbackToken =
 const report = (id: string, x: number, y: number, title: string): BugReport => ({ id, x, y, r: 12, title });
 
 export const WORLD: Rect = { x: 0, y: 0, w: 960, h: 540 };
+export const WORLD_WIDE: Rect = { x: 0, y: 0, w: 1920, h: 540 };
+export const WORLD_TALL: Rect = { x: 0, y: 0, w: 960, h: 1080 };
+export const WORLD_WIDE_MED: Rect = { x: 0, y: 0, w: 1440, h: 540 };
+
+const moving = (
+  id: string, x: number, y: number, w: number,
+  range = 80, speed = 0.45, phase = 0
+): Platform => ({
+  id, kind: "moving", x, y, w, h: 22, phase,
+  moveRange: range, moveSpeed: speed,
+});
 
 export const levels: LevelDefinition[] = [
   {
@@ -386,6 +400,141 @@ export const levels: LevelDefinition[] = [
     bugReport: report("lf-bug", 858, 214, "Stable release includes all previous incidents"),
     bounds: WORLD,
     background: "#331a34",
+  },
+
+  // ── Post-2.0 content ──────────────────────────────────────────────────────
+
+  {
+    id: 12,
+    patchId: 12,
+    title: "Patch 2.1",
+    modifier: "wide_world",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1856, y: 430, w: 38, h: 62 },
+    platforms: [
+      { id: "l12-ground", kind: "solid", x: 0, y: 500, w: 1920, h: 40 },
+      platform("l12-a", 200, 452, 130),
+      platform("l12-b", 430, 394, 140),
+      platform("l12-c", 680, 444, 110),
+      platform("l12-d", 880, 386, 150),
+      platform("l12-e", 1100, 438, 130),
+      platform("l12-f", 1320, 386, 140),
+      platform("l12-g", 1556, 432, 120),
+      platform("l12-h", 1726, 382, 130),
+    ],
+    coins: [
+      coin("l12-c1", 258, 418), coin("l12-c2", 498, 360),
+      coin("l12-c3", 732, 410), coin("l12-c4", 954, 352),
+      coin("l12-c5", 1162, 404), coin("l12-c6", 1388, 352),
+    ],
+    spikes: [
+      spike("l12-s1", 364, 470), spike("l12-s2", 624, 470),
+      spike("l12-s3", 1042, 470), spike("l12-s4", 1474, 470),
+      spike("l12-s5", 1656, 470),
+    ],
+    bugReport: report("l12-bug", 954, 352, "Map boundaries exceeded roadmap"),
+    bounds: WORLD_WIDE,
+    background: "#111d3a",
+  },
+
+  {
+    id: 13,
+    patchId: 13,
+    title: "Patch 2.2",
+    modifier: "tall_world",
+    gravity: "down",
+    start: { x: 54, y: 1016, w: 28, h: 34 },
+    exit: { x: 870, y: 40, w: 38, h: 62 },
+    platforms: [
+      { id: "l13-ground", kind: "solid", x: 0, y: 1060, w: 960, h: 40 },
+      platform("l13-01", 150, 990, 120),
+      platform("l13-02", 680, 920, 120),
+      platform("l13-03", 280, 850, 130),
+      platform("l13-04", 660, 780, 120),
+      platform("l13-05", 160, 710, 120),
+      platform("l13-06", 710, 640, 120),
+      platform("l13-07", 310, 570, 130),
+      platform("l13-08", 640, 500, 120),
+      platform("l13-09", 160, 430, 120),
+      platform("l13-10", 700, 360, 120),
+      platform("l13-11", 290, 290, 130),
+      platform("l13-12", 650, 220, 120),
+      platform("l13-13", 170, 150, 120),
+      platform("l13-14", 700, 80, 120),
+    ],
+    coins: [
+      coin("l13-c1", 210, 956), coin("l13-c2", 728, 746),
+      coin("l13-c3", 354, 536), coin("l13-c4", 688, 326),
+      coin("l13-c5", 228, 116),
+    ],
+    spikes: [
+      spike("l13-s1", 450, 1030), spike("l13-s2", 820, 890),
+      spike("l13-s3", 440, 820), spike("l13-s4", 850, 470),
+    ],
+    bugReport: report("l13-bug", 700, 360, "Vertical scope creep detected"),
+    bounds: WORLD_TALL,
+    background: "#152830",
+  },
+
+  {
+    id: 14,
+    patchId: 14,
+    title: "Patch 2.3",
+    modifier: "moving_platforms_h",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1378, y: 318, w: 38, h: 62 },
+    platforms: [
+      { id: "l14-ground", kind: "solid", x: 0, y: 500, w: 1440, h: 40 },
+      platform("l14-base", 150, 452, 120),
+      moving("l14-m1", 380, 402, 100, 72, 0.42),
+      platform("l14-rest1", 570, 390, 110),
+      moving("l14-m2", 766, 354, 100, 84, 0.50, 0.8),
+      moving("l14-m3", 968, 400, 100, 66, 0.56, 1.6),
+      platform("l14-rest2", 1138, 378, 110),
+      moving("l14-m4", 1304, 342, 100, 78, 0.48, 0.4),
+    ],
+    coins: [
+      coin("l14-c1", 208, 418), coin("l14-c2", 618, 356),
+      coin("l14-c3", 1186, 344), coin("l14-c4", 1286, 308),
+    ],
+    spikes: [
+      spike("l14-s1", 488, 470), spike("l14-s2", 876, 470),
+      spike("l14-s3", 1072, 470),
+    ],
+    bugReport: report("l14-bug", 1186, 344, "Platforms dequeued during transit"),
+    bounds: WORLD_WIDE_MED,
+    background: "#1e2245",
+  },
+
+  {
+    id: 15,
+    patchId: 15,
+    title: "Patch 2.4",
+    modifier: "headwind",
+    gravity: "down",
+    wind: -520,
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 878, y: 318, w: 38, h: 62 },
+    platforms: [
+      ground("l15-ground"),
+      platform("l15-a", 160, 450, 130),
+      platform("l15-b", 390, 398, 130),
+      platform("l15-c", 630, 452, 110),
+      platform("l15-d", 738, 394, 130),
+    ],
+    coins: [
+      coin("l15-c1", 218, 416), coin("l15-c2", 450, 364),
+      coin("l15-c3", 796, 360), coin("l15-c4", 92, 470),
+    ],
+    spikes: [
+      spike("l15-s1", 320, 470), spike("l15-s2", 544, 470),
+      spike("l15-s3", 694, 470), spike("l15-s4", 848, 470),
+    ],
+    bugReport: report("l15-bug", 450, 364, "Wind resistance removed for throughput"),
+    bounds: WORLD,
+    background: "#2a1a2e",
   },
 ];
 

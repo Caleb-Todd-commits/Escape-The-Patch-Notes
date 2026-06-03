@@ -54,6 +54,7 @@ interface Player extends Rect {
 interface PlatformState extends Platform {
   broken?: boolean;
   standTime?: number;
+  baseX?: number;
 }
 
 interface CoinState extends Coin {
@@ -199,6 +200,7 @@ export class Game {
   private settingsPrevMode: GameMode = "title";
   private rebindingFor: keyof Bindings | null = null;
   private facing: "right" | "left" = "right";
+  private camera = { x: 0, y: 0 };
   private hotSpots: Array<{ x: number; y: number; w: number; h: number; action: () => void }> = [];
 
   constructor(
@@ -386,7 +388,11 @@ export class Game {
     const definition = cloneLevel(levels[this.levelIndex]);
     this.level = {
       ...definition,
-      platforms: definition.platforms.map((item) => ({ ...item, standTime: 0 })),
+      platforms: definition.platforms.map((item) => ({
+        ...item,
+        standTime: 0,
+        baseX: item.kind === "moving" ? item.x : undefined,
+      })),
       coins: definition.coins.map((item) => ({ ...item, collected: false })),
       spikes: definition.spikes.map((item) => ({ ...item, baseX: item.x, baseY: item.y, vx: 0, vy: 0 })),
       tokens: (definition.tokens ?? []).map((item) => ({ ...item, collected: false })),
@@ -407,6 +413,7 @@ export class Game {
     this.levelStartedAt = performance.now();
     this.levelPausedMs = 0;
     this.levelPauseStart = 0;
+    this.camera = { x: 0, y: 0 };
     this.setStatus();
   }
 
@@ -431,8 +438,37 @@ export class Game {
     requestAnimationFrame((next) => this.loop(next));
   }
 
+  private updateCamera(): void {
+    const bw = this.level.bounds.w;
+    const bh = this.level.bounds.h;
+    const tx = clamp(this.player.x + this.player.w / 2 - VIEW_W / 2, 0, Math.max(0, bw - VIEW_W));
+    const ty = clamp(this.player.y + this.player.h / 2 - VIEW_H / 2, 0, Math.max(0, bh - VIEW_H));
+    this.camera.x += (tx - this.camera.x) * 0.1;
+    this.camera.y += (ty - this.camera.y) * 0.1;
+    if (Math.abs(tx - this.camera.x) < 0.5) this.camera.x = tx;
+    if (Math.abs(ty - this.camera.y) < 0.5) this.camera.y = ty;
+  }
+
+  private updateMovingPlatforms(dt: number, time: number): void {
+    if (!this.isModifierLive("moving_platforms_h")) return;
+    const elapsed = this.levelElapsed(time);
+    for (const platform of this.level.platforms) {
+      if (platform.kind !== "moving" || platform.baseX === undefined) continue;
+      const range = platform.moveRange ?? 80;
+      const speed = platform.moveSpeed ?? 0.45;
+      const newX = platform.baseX + Math.sin(elapsed * speed * Math.PI * 2 + (platform.phase ?? 0)) * range;
+      const dx = newX - platform.x;
+      platform.x = newX;
+      if (this.groundedPlatformId === platform.id) {
+        this.player.x += dx;
+      }
+    }
+  }
+
   private update(dt: number, time: number): void {
     this.updatePlayer(dt, time);
+    if (this.mode !== "playing") return;
+    this.updateMovingPlatforms(dt, time);
     if (this.mode !== "playing") return;
     this.updateCrumblingPlatforms(dt);
     if (this.mode !== "playing") return;
@@ -457,6 +493,9 @@ export class Game {
       this.player.vx += input * ACCEL * dt;
       if (input === 0) {
         this.player.vx -= clamp(this.player.vx, -friction * PLAYER_SPEED * dt, friction * PLAYER_SPEED * dt);
+      }
+      if (this.level.wind && !rollbackActive) {
+        this.player.vx += this.level.wind * dt;
       }
       this.player.vx = clamp(this.player.vx, -PLAYER_SPEED, PLAYER_SPEED);
     } else {
@@ -487,11 +526,12 @@ export class Game {
       this.facing = input > 0 ? "right" : "left";
     }
 
+    const b = this.level.bounds;
     if (
-      this.player.x < -80 ||
-      this.player.x > VIEW_W + 80 ||
-      this.player.y < -80 ||
-      this.player.y > VIEW_H + 80
+      this.player.x < b.x - 80 ||
+      this.player.x > b.x + b.w + 80 ||
+      this.player.y < b.y - 80 ||
+      this.player.y > b.y + b.h + 80
     ) {
       this.die("Patched out of bounds");
     }
@@ -790,6 +830,10 @@ export class Game {
 
   private startPlaying(time: number): void {
     this.levelStartedAt = time;
+    const bw = this.level.bounds.w;
+    const bh = this.level.bounds.h;
+    this.camera.x = clamp(this.player.x + this.player.w / 2 - VIEW_W / 2, 0, Math.max(0, bw - VIEW_W));
+    this.camera.y = clamp(this.player.y + this.player.h / 2 - VIEW_H / 2, 0, Math.max(0, bh - VIEW_H));
     this.setMode("playing");
   }
 
@@ -939,6 +983,13 @@ export class Game {
   }
 
   private drawWorld(ctx: CanvasRenderingContext2D, time: number): void {
+    this.updateCamera();
+    const cx = Math.round(this.camera.x);
+    const cy = Math.round(this.camera.y);
+
+    ctx.save();
+    ctx.translate(-cx, -cy);
+
     const activeIds = new Set(this.activePlatforms(time).map((item) => item.id));
     for (const platform of this.level.platforms) {
       this.drawPlatform(ctx, platform, activeIds.has(platform.id), time);
@@ -964,21 +1015,14 @@ export class Game {
     }
 
     for (const coin of this.level.coins) {
-      if (!coin.collected) {
-        this.drawCoin(ctx, coin, time);
-      }
+      if (!coin.collected) this.drawCoin(ctx, coin, time);
     }
-
     for (const token of this.level.tokens) {
-      if (!token.collected) {
-        this.drawRollbackToken(ctx, token, time);
-      }
+      if (!token.collected) this.drawRollbackToken(ctx, token, time);
     }
-
     if (this.bonusChallengeActive && this.level.bugReport && !this.level.bugReport.collected) {
       this.drawBugReport(ctx, this.level.bugReport, time);
     }
-
     for (const spike of this.level.spikes) {
       this.drawSpike(ctx, spike);
     }
@@ -987,9 +1031,52 @@ export class Game {
     this.drawPlayer(ctx, time);
     this.drawParticles(ctx);
 
+    ctx.restore();
+
+    // Screen-space overlays
     if (this.message && time < this.messageUntil) {
       drawTextPill(ctx, this.message, VIEW_W / 2, 104, "#fff5d6", "#291a36");
     }
+    this.drawExitArrow(ctx, time);
+  }
+
+  private drawExitArrow(ctx: CanvasRenderingContext2D, time: number): void {
+    const exit = this.activeExit(time);
+    const ex = exit.x - this.camera.x;
+    const ey = exit.y - this.camera.y;
+    const offLeft   = ex + exit.w < 60;
+    const offRight  = ex > VIEW_W - 60;
+    const offTop    = ey + exit.h < 80;
+    const offBottom = ey > VIEW_H - 80;
+    if (!offLeft && !offRight && !offTop && !offBottom) return;
+
+    const pulse = 0.55 + Math.sin(time / 260) * 0.45;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+
+    if (offRight)  this.drawArrowPointer(ctx, VIEW_W - 28, clamp(ey + exit.h / 2, 90, VIEW_H - 90), "right");
+    else if (offLeft) this.drawArrowPointer(ctx, 28, clamp(ey + exit.h / 2, 90, VIEW_H - 90), "left");
+    if (offBottom) this.drawArrowPointer(ctx, clamp(ex + exit.w / 2, 60, VIEW_W - 60), VIEW_H - 36, "down");
+    else if (offTop) this.drawArrowPointer(ctx, clamp(ex + exit.w / 2, 60, VIEW_W - 60), 36, "up");
+
+    ctx.restore();
+  }
+
+  private drawArrowPointer(ctx: CanvasRenderingContext2D, x: number, y: number, dir: "left" | "right" | "up" | "down"): void {
+    const s = 13;
+    ctx.fillStyle = "#70f5ff";
+    ctx.strokeStyle = "#70f5ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    switch (dir) {
+      case "right": ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y); ctx.lineTo(x - s, y + s); break;
+      case "left":  ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y); ctx.lineTo(x + s, y + s); break;
+      case "down":  ctx.moveTo(x - s, y - s); ctx.lineTo(x, y + s); ctx.lineTo(x + s, y - s); break;
+      case "up":    ctx.moveTo(x - s, y + s); ctx.lineTo(x, y - s); ctx.lineTo(x + s, y + s); break;
+    }
+    ctx.closePath();
+    ctx.fill();
+    drawText(ctx, "EXIT", x + (dir === "right" ? -s - 36 : dir === "left" ? s + 4 : -14), y + (dir === "down" ? -s - 6 : dir === "up" ? s + 16 : 5), 11, "#70f5ff", "bold");
   }
 
   private drawPlatform(ctx: CanvasRenderingContext2D, platform: PlatformState, active: boolean, time: number): void {
@@ -997,8 +1084,8 @@ export class Game {
       return;
     }
 
-    const fill = platform.kind === "crumbling" ? "#99694a" : platform.kind === "async" ? "#3edce7" : "#4caf63";
-    const edge = platform.kind === "crumbling" ? "#ffc15e" : platform.kind === "async" ? "#e8fbff" : "#b8ff85";
+    const fill = platform.kind === "crumbling" ? "#99694a" : platform.kind === "async" ? "#3edce7" : platform.kind === "moving" ? "#c49020" : "#4caf63";
+    const edge = platform.kind === "crumbling" ? "#ffc15e" : platform.kind === "async" ? "#e8fbff" : platform.kind === "moving" ? "#ffe566" : "#b8ff85";
     const alpha = active ? 1 : 0.22;
 
     ctx.save();
@@ -1024,6 +1111,12 @@ export class Game {
       const pulse = 0.5 + Math.sin(time / 160 + platform.x) * 0.5;
       ctx.fillStyle = `rgba(255,255,255,${0.18 + pulse * 0.22})`;
       ctx.fillRect(platform.x + 6, platform.y + 5, platform.w - 12, 4);
+    }
+    if (platform.kind === "moving") {
+      const arrow = Math.sin(time / 180 + (platform.baseX ?? platform.x) * 0.01) > 0 ? "→" : "←";
+      ctx.fillStyle = "rgba(255,220,100,0.55)";
+      ctx.fillRect(platform.x + 6, platform.y + 5, platform.w - 12, 4);
+      drawText(ctx, arrow, platform.x + platform.w / 2 - 5, platform.y + 18, 11, "rgba(255,230,120,0.7)");
     }
     ctx.restore();
   }
@@ -1177,7 +1270,7 @@ export class Game {
     const reportCount = this.totalReports + Number(this.bonusChallengeActive && Boolean(this.level.bugReport?.collected));
     drawText(
       ctx,
-      this.bonusChallengeActive ? `${reportCount}/11 bugs` : "bonus locked",
+      this.bonusChallengeActive ? `${reportCount}/${levels.length} bugs` : "bonus locked",
       684,
       64,
       13,
@@ -1236,11 +1329,11 @@ export class Game {
 
     const columns = 3;
     const cardW = 278;
-    const cardH = 70;
+    const cardH = 58;
     const startX = 68;
-    const startY = 126;
+    const startY = 118;
     const gapX = 14;
-    const gapY = 9;
+    const gapY = 7;
 
     for (let index = 0; index < levels.length; index += 1) {
       const level = levels[index];
@@ -1267,14 +1360,14 @@ export class Game {
       });
     }
 
-    drawPanel(ctx, 68, 482, 856, 34, "rgba(12, 17, 39, 0.8)", selectedProgress?.completed ? "#ff9aa7" : "#87ffc4");
+    drawPanel(ctx, 68, 456, 856, 34, "rgba(12, 17, 39, 0.8)", selectedProgress?.completed ? "#ff9aa7" : "#87ffc4");
     drawText(
       ctx,
       selectedProgress?.completed
         ? `Selected Patch ${selectedPatch.version}: replay challenge unlocked. File the bug report for better medals.`
         : `Selected Patch ${selectedPatch.version}: first pass objective is only to reach the exit.`,
       84,
-      505,
+      479,
       14,
       selectedProgress?.completed ? "#ff9aa7" : "#87ffc4",
       "bold",
@@ -1297,13 +1390,13 @@ export class Game {
     const fill = selected ? "rgba(32, 31, 65, 0.96)" : "rgba(10, 15, 36, 0.86)";
 
     drawPanel(ctx, x, y, w, h, fill, stroke);
-    drawText(ctx, `${levelId}. ${patch.version}`, x + 12, y + 24, 16, selected ? "#ffdc3f" : "#ffffff", "bold");
-    drawText(ctx, releaseBoardLabel(patch.modifier), x + 88, y + 24, 13, "#cde9ff", "bold");
-    drawText(ctx, completed ? "CLEARED" : "UNSHIPPED", x + 12, y + 47, 13, completed ? "#87ffc4" : "#ff9aa7", "bold");
-    drawText(ctx, completed ? "BONUS READY" : "BONUS LOCKED", x + 96, y + 47, 13, completed ? "#ff9aa7" : "#9fc7ff", "bold");
-    drawText(ctx, `Medal ${progress?.bestMedal?.toUpperCase() ?? "--"}`, x + 12, y + 68, 12, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
-    drawText(ctx, `Bug ${progress?.reportCollected ? "FILED" : completed ? "OPEN" : "--"}`, x + 116, y + 68, 12, progress?.reportCollected ? "#fff5d6" : "#7c8dbb", "bold");
-    drawText(ctx, `Best ${formatTime(progress?.bestTime)}`, x + 204, y + 68, 12, "#cde9ff", "bold");
+    drawText(ctx, `${levelId}. ${patch.version}`, x + 10, y + 19, 14, selected ? "#ffdc3f" : "#ffffff", "bold");
+    drawText(ctx, releaseBoardLabel(patch.modifier), x + 78, y + 19, 12, "#cde9ff", "bold");
+    drawText(ctx, completed ? "CLEARED" : "UNSHIPPED", x + 10, y + 37, 12, completed ? "#87ffc4" : "#ff9aa7", "bold");
+    drawText(ctx, completed ? "BONUS READY" : "BONUS LOCKED", x + 90, y + 37, 12, completed ? "#ff9aa7" : "#9fc7ff", "bold");
+    drawText(ctx, `${progress?.bestMedal?.toUpperCase() ?? "--"}`, x + 10, y + 53, 11, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
+    drawText(ctx, `Bug ${progress?.reportCollected ? "FILED" : completed ? "open" : "--"}`, x + 68, y + 53, 11, progress?.reportCollected ? "#fff5d6" : "#7c8dbb", "bold");
+    drawText(ctx, `${formatTime(progress?.bestTime)}`, x + 180, y + 53, 11, "#cde9ff", "bold");
   }
 
   private drawPatchIntro(): void {
@@ -1405,15 +1498,15 @@ export class Game {
     drawText(ctx, `Grade ${grade}`, 100, 122, 22, gradeColor, "bold");
     drawText(ctx, `Score ${score}`, 248, 122, 20, "#ffdc3f", "bold");
     drawText(ctx, `Best ${this.bestScore}`, 510, 122, 16, "#87ffc4", "bold");
-    drawText(ctx, `Bugs ${this.totalReports}/11`, 700, 122, 16, "#ff9aa7", "bold");
+    drawText(ctx, `Bugs ${this.totalReports}/${levels.length}`, 700, 122, 16, "#ff9aa7", "bold");
     drawText(ctx, `Time ${totalSeconds}s   Deaths ${this.deaths}   Coins ${this.totalCoins}`, 100, 148, 15, "#cde9ff", "bold");
 
     drawText(ctx, "Release Record", 100, 176, 14, "#ffffff", "bold");
     const colW = 266;
     const gridX = 100;
     const gridY = 194;
-    const rowH = 24;
-    for (let i = 0; i < this.results.length && i < 11; i++) {
+    const rowH = 20;
+    for (let i = 0; i < this.results.length && i < levels.length; i++) {
       const result = this.results[i];
       const col = i % 3;
       const row = Math.floor(i / 3);
@@ -1789,6 +1882,14 @@ function releaseBoardLabel(modifier: PatchModifier): string {
       return "Moving exit";
     case "finale_combo":
       return "Stability bundle";
+    case "wide_world":
+      return "Two-screen wide";
+    case "tall_world":
+      return "Two-screen tall";
+    case "moving_platforms_h":
+      return "Moving platforms";
+    case "headwind":
+      return "Headwind active";
   }
 }
 
