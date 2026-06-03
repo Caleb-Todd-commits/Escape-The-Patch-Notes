@@ -2,6 +2,8 @@
 
 **A platformer slowly ruined by updates.**
 
+**Play now: https://escape-the-patch-notes.vercel.app**
+
 Escape the Patch Notes is a browser platformer where every level introduces a new suspicious patch note. The first level behaves like a normal coin-and-exit platformer. Then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and the final release bundles the previous mistakes together.
 
 ## What I Made

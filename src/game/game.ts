@@ -198,6 +198,8 @@ export class Game {
   private settingsRow = 0;
   private settingsPrevMode: GameMode = "title";
   private rebindingFor: keyof Bindings | null = null;
+  private facing: "right" | "left" = "right";
+  private hotSpots: Array<{ x: number; y: number; w: number; h: number; action: () => void }> = [];
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -331,6 +333,32 @@ export class Game {
     window.addEventListener("keyup", (event) => {
       this.keys.delete(event.code);
     });
+
+    this.canvas.addEventListener("pointerdown", (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const lx = (e.clientX - rect.left) * (VIEW_W / rect.width);
+      const ly = (e.clientY - rect.top) * (VIEW_H / rect.height);
+      for (const hs of this.hotSpots) {
+        if (lx >= hs.x && lx <= hs.x + hs.w && ly >= hs.y && ly <= hs.y + hs.h) {
+          hs.action();
+          return;
+        }
+      }
+    });
+
+    this.canvas.addEventListener("pointermove", (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const lx = (e.clientX - rect.left) * (VIEW_W / rect.width);
+      const ly = (e.clientY - rect.top) * (VIEW_H / rect.height);
+      const over = this.hotSpots.some(hs =>
+        lx >= hs.x && lx <= hs.x + hs.w && ly >= hs.y && ly <= hs.y + hs.h
+      );
+      this.canvas.style.cursor = over ? "pointer" : "";
+    });
+  }
+
+  private hot(x: number, y: number, w: number, h: number, action: () => void): void {
+    this.hotSpots.push({ x, y, w, h, action });
   }
 
   private resizeForDevicePixelRatio(): void {
@@ -454,6 +482,10 @@ export class Game {
     this.player.vy = clamp(this.player.vy, -MAX_FALL, MAX_FALL);
 
     this.moveAndCollide(dt, time);
+
+    if (lateral.x !== 0 && input !== 0) {
+      this.facing = input > 0 ? "right" : "left";
+    }
 
     if (
       this.player.x < -80 ||
@@ -840,6 +872,7 @@ export class Game {
       ctx.translate((Math.random() - 0.5) * strength, (Math.random() - 0.5) * strength);
     }
 
+    this.hotSpots = [];
     this.drawBackground(ctx, time);
 
     if (this.mode === "loading") {
@@ -868,7 +901,7 @@ export class Game {
     } else if (this.mode === "levelIntro") {
       this.drawPatchIntro();
     } else if (this.mode === "paused") {
-      this.drawCenteredPanel("Paused", "Esc continue   S settings   R restart");
+      this.drawPausedScreen();
     } else if (this.mode === "levelComplete") {
       this.drawLevelComplete();
     } else if (this.mode === "gameOver") {
@@ -880,20 +913,23 @@ export class Game {
   }
 
   private drawBackground(ctx: CanvasRenderingContext2D, time: number): void {
+    const bg = this.level?.background ?? "#090d22";
     const gradient = ctx.createLinearGradient(0, 0, VIEW_W, VIEW_H);
-    gradient.addColorStop(0, this.level?.background ?? "#090d22");
+    gradient.addColorStop(0, bg);
     gradient.addColorStop(1, "#080814");
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    // Star field tinted to match the level's color palette
+    ctx.fillStyle = `rgba(${hexLighter(bg, 110)}, 0.18)`;
     for (let i = 0; i < 48; i += 1) {
       const x = (i * 137 + Math.sin(time / 900 + i) * 8) % VIEW_W;
       const y = (i * 73 + Math.cos(time / 1300 + i) * 8) % VIEW_H;
       ctx.fillRect(x, y, i % 5 === 0 ? 3 : 2, i % 7 === 0 ? 3 : 2);
     }
 
-    ctx.fillStyle = "rgba(12,16,35,0.5)";
+    // Grid lines tinted to match
+    ctx.fillStyle = `rgba(${hexLighter(bg, 20)}, 0.48)`;
     for (let x = 0; x < VIEW_W; x += 48) {
       ctx.fillRect(x, 0, 2, VIEW_H);
     }
@@ -1064,6 +1100,15 @@ export class Game {
   private drawPlayer(ctx: CanvasRenderingContext2D, time: number): void {
     const p = this.player;
     const blink = Math.sin(time / 100) > 0.2;
+    const cx = p.x + p.w / 2;
+
+    ctx.save();
+    if (this.facing === "left") {
+      ctx.translate(cx, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-cx, 0);
+    }
+
     ctx.fillStyle = "#c73d58";
     ctx.fillRect(p.x - 8, p.y + 12, 12, 18);
     ctx.fillStyle = "#1e8dff";
@@ -1082,6 +1127,8 @@ export class Game {
       ctx.fillRect(p.x + 14, p.y + 9, 3, 1);
       ctx.fillRect(p.x + 22, p.y + 9, 3, 1);
     }
+
+    ctx.restore();
   }
 
   private drawHud(ctx: CanvasRenderingContext2D, time: number): void {
@@ -1163,6 +1210,7 @@ export class Game {
       drawText(ctx, `Best release score ${this.bestScore}`, 164, 342, 16, "#ffdc3f", "bold");
     }
     drawTextPill(ctx, "ENTER RELEASE BOARD", 480, 378, "#111827", "#ffdc3f");
+    this.hot(310, 358, 340, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
     drawText(ctx, "Space quick-starts · S settings · T touch controls", 186, 420, 13, "#cde9ff", "bold");
   }
 
@@ -1177,6 +1225,9 @@ export class Game {
 
     drawPanel(ctx, 36, 30, 888, 488, "rgba(7, 10, 26, 0.92)", "#70f5ff");
     drawText(ctx, "RELEASE BOARD", 68, 78, 34, "#ffffff", "bold");
+    drawPanel(ctx, 796, 54, 106, 28, "rgba(0,0,0,0.4)", "#70f5ff");
+    drawText(ctx, "← Title", 808, 73, 13, "#70f5ff", "bold");
+    this.hot(796, 54, 106, 28, () => this.setMode("title"));
     drawText(ctx, `${completed}/11 shipped`, 554, 62, 15, "#87ffc4", "bold");
     drawText(ctx, `${reports}/11 reports`, 554, 84, 15, "#fff5d6", "bold");
     drawText(ctx, `${golds}/11 gold`, 724, 62, 15, "#ffdc3f", "bold");
@@ -1196,17 +1247,24 @@ export class Game {
       const patch = this.run.levels[index];
       const col = index % columns;
       const row = Math.floor(index / columns);
+      const cx = startX + col * (cardW + gapX);
+      const cy = startY + row * (cardH + gapY);
       this.drawReleaseCard(
         ctx,
         level.id,
         patch,
         this.levelProgress[level.id],
-        startX + col * (cardW + gapX),
-        startY + row * (cardH + gapY),
+        cx,
+        cy,
         cardW,
         cardH,
         index === this.boardSelection,
       );
+      this.hot(cx, cy, cardW, cardH, () => {
+        this.boardSelection = index;
+        this.startRunAt(index);
+        this.audio.play("start");
+      });
     }
 
     drawPanel(ctx, 68, 482, 856, 34, "rgba(12, 17, 39, 0.8)", selectedProgress?.completed ? "#ff9aa7" : "#87ffc4");
@@ -1266,14 +1324,31 @@ export class Game {
       "bold",
     );
     drawTextPill(ctx, "ENTER TO SHIP", 480, 386, "#111827", severityColor(patch.severity));
+    this.hot(350, 366, 260, 34, () => this.startPlaying(performance.now()));
+  }
+
+  private drawPausedScreen(): void {
+    const ctx = this.ctx;
+    drawPanel(ctx, 226, 168, 508, 210, "rgba(8, 11, 28, 0.93)", "#70f5ff");
+    drawText(ctx, "Paused", 264, 222, 32, "#ffffff", "bold");
+    drawText(ctx, "Esc continue · S settings · R restart", 264, 260, 14, "#cde9ff");
+    drawText(ctx, `Move  ${keyLabel(this.bindings.left)} / ${keyLabel(this.bindings.right)}`, 264, 292, 13, "#9fc7ff");
+    drawText(ctx, `Jump  ${keyLabel(this.bindings.jump)}   Pause  ${keyLabel(this.bindings.pause)}   M mute`, 264, 314, 13, "#9fc7ff");
+    drawPanel(ctx, 310, 334, 148, 28, "rgba(0,0,0,0.4)", "#70f5ff");
+    drawText(ctx, "► Resume", 326, 353, 13, "#70f5ff", "bold");
+    this.hot(310, 334, 148, 28, () => this.setMode("playing"));
   }
 
   private drawGameOverScreen(): void {
     const ctx = this.ctx;
-    drawPanel(ctx, 206, 172, 548, 190, "rgba(7, 10, 26, 0.93)", "#ff4f81");
-    drawText(ctx, "GAME OVER", 254, 228, 36, "#ffffff", "bold");
-    drawText(ctx, this.lastDeathReason || "Patch rejected", 258, 266, 17, "#ffdc3f", "bold");
-    drawWrappedText(ctx, this.run.gameOverSummary, 258, 302, 440, 18, "#cde9ff");
+    drawPanel(ctx, 176, 148, 608, 244, "rgba(7, 10, 26, 0.93)", "#ff4f81");
+    drawText(ctx, "GAME OVER", 228, 200, 36, "#ffffff", "bold");
+    drawText(ctx, this.lastDeathReason || "Patch rejected", 228, 238, 16, "#ffdc3f", "bold");
+    drawText(ctx, `${this.level.title} · Level ${this.levelIndex + 1}/11 · ${this.deaths} run deaths`, 228, 264, 14, "#9fc7ff");
+    drawWrappedText(ctx, this.run.gameOverSummary, 228, 290, 520, 16, "#cde9ff");
+    drawPanel(ctx, 346, 346, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
+    drawText(ctx, "Restart →", 358, 365, 13, "#ff4f81", "bold");
+    this.hot(346, 346, 148, 28, () => { this.resetLevel(); this.startLevelIntro(); });
   }
 
   private drawLevelComplete(): void {
@@ -1301,6 +1376,8 @@ export class Game {
     }
     const nextY = this.bonusChallengeActive ? 352 : 322;
     drawText(ctx, "R replay   Enter continue release train", 258, nextY, 15, "#9fc7ff", "bold");
+    this.hot(210, nextY - 18, 210, 26, () => { this.resetLevel(); this.startLevelIntro(); this.audio.play("restart"); });
+    this.hot(420, nextY - 18, 330, 26, () => this.advanceLevel());
   }
 
   private drawWinScreen(): void {
@@ -1357,7 +1434,9 @@ export class Game {
     drawText(ctx, this.shareUrl, 100, 378, 11, "#9fc7ff", "bold");
 
     drawTextPill(ctx, "R  NEW RUN", 228, 462, "#111827", "#ffdc3f");
+    this.hot(116, 442, 224, 34, () => { this.startRunAt(0); this.audio.play("start"); });
     drawTextPill(ctx, "ENTER  RELEASE BOARD", 680, 462, "#111827", "#87ffc4");
+    this.hot(488, 442, 384, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
   }
 
   private drawCenteredPanel(title: string, subtitle: string): void {
@@ -1495,7 +1574,9 @@ export class Game {
 
     drawPanel(ctx, 80, 26, 800, 488, "rgba(7, 10, 26, 0.95)", "#7767ff");
     drawText(ctx, "SETTINGS", 118, 80, 30, "#ffffff", "bold");
-    drawText(ctx, "Esc  Back", 748, 80, 14, "#9fc7ff");
+    drawPanel(ctx, 746, 58, 112, 28, "rgba(0,0,0,0.4)", "#9fc7ff");
+    drawText(ctx, "← Back", 758, 77, 13, "#9fc7ff", "bold");
+    this.hot(746, 58, 112, 28, () => this.setMode(this.settingsPrevMode));
 
     // ── Player Name ──────────────────────────────────────────
     if (row === 0) {
@@ -1506,6 +1587,7 @@ export class Game {
     drawPanel(ctx, 300, 107, 340, 28, "rgba(0,0,0,0.45)", row === 0 ? "#7767ff" : "#40517f");
     drawText(ctx, this.playerName || "(no name set)", 314, 128, 14, this.playerName ? "#ffffff" : "#9fc7ff");
     if (row === 0) drawText(ctx, "Enter to edit", 660, 130, 12, "#7767ff");
+    this.hot(98, 102, 764, 40, () => { this.settingsRow = 0; if (!rebinding) this.activateSettingsRow(); });
 
     // ── Current Level ─────────────────────────────────────────
     const patch = this.currentPatch();
@@ -1536,6 +1618,11 @@ export class Game {
       drawPanel(ctx, 350, y + 2, 200, 22, "rgba(0,0,0,0.45)", pillBorder);
       drawText(ctx, pillText, 360, y + 18, 12, isRebinding ? "#ffdc3f" : "#cde9ff", "bold");
       if (isRow && !isRebinding) drawText(ctx, "Enter to rebind", 564, y + 18, 11, "#7767ff");
+      this.hot(98, y - 2, 764, 30, () => {
+        if (rebinding) { this.rebindingFor = null; return; }
+        this.settingsRow = rowIdx;
+        this.activateSettingsRow();
+      });
     }
 
     drawText(ctx, "Jump also accepts: W · ↑ Arrow", 118, 355, 12, "rgba(156,199,255,0.45)");
@@ -1552,6 +1639,7 @@ export class Game {
     drawPanel(ctx, 340, 394, 80, 22, "rgba(0,0,0,0.45)", touchBorder);
     drawText(ctx, touchOn ? "ON" : "OFF", touchOn ? 354 : 352, 410, 13, touchBorder, "bold");
     if (row === 5) drawText(ctx, "Enter to toggle", 434, 410, 11, "#7767ff");
+    this.hot(98, 390, 764, 38, () => { this.settingsRow = 5; this.activateSettingsRow(); });
 
     drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 462, 12, "rgba(156,199,255,0.4)");
   }
@@ -1845,6 +1933,14 @@ function savePlayerName(name: string): void {
 
 function isTouchEnabled(): boolean {
   try { return localStorage.getItem("escapePatchNotesTouch") === "true"; } catch { return false; }
+}
+
+function hexLighter(hex: string, amount: number): string {
+  const c = hex.replace("#", "");
+  const r = Math.min(255, parseInt(c.slice(0, 2), 16) + amount);
+  const g = Math.min(255, parseInt(c.slice(2, 4), 16) + amount);
+  const b = Math.min(255, parseInt(c.slice(4, 6), 16) + amount);
+  return `${r},${g},${b}`;
 }
 
 function keyLabel(code: string): string {
