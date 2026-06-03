@@ -178,6 +178,7 @@ export class Game {
   private lastDeathReason = "";
   private rollbackUntil = 0;
   private magnetPulses: MagnetPulse[] = [];
+  private huntUntil = 0;
   private particles: Particle[] = [];
   private shakeUntil = 0;
   private shakeMagnitude = 0;
@@ -409,6 +410,7 @@ export class Game {
     this.levelCoins = 0;
     this.rollbackUntil = 0;
     this.magnetPulses = [];
+    this.huntUntil = 0;
     this.bonusChallengeActive = false;
     this.message = "";
     this.messageUntil = 0;
@@ -637,23 +639,59 @@ export class Game {
   private updateSpikes(dt: number, time: number): void {
     const magnetLive = this.isModifierLive("coin_spike_magnet");
     this.magnetPulses = this.magnetPulses.filter((pulse) => pulse.until > time);
+    const hunting = magnetLive && time < this.huntUntil;
 
     for (const spike of this.level.spikes) {
-      if (!magnetLive || this.magnetPulses.length === 0) {
+      if (!magnetLive) {
         spike.vx = (spike.vx ?? 0) * 0.9;
         spike.vy = (spike.vy ?? 0) * 0.9;
-      } else {
+      } else if (hunting) {
+        // Direct player-tracking hunt mode
+        const sc = rectCenter(spike);
+        const pc = rectCenter(this.player);
+        const dx = pc.x - sc.x;
+        const dy = pc.y - sc.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const HUNT_SPEED = 210;
+        spike.vx = clamp((spike.vx ?? 0) + (dx / dist) * HUNT_SPEED * dt * 2.5, -210, 210);
+        spike.vy = clamp((spike.vy ?? 0) + (dy / dist) * HUNT_SPEED * dt * 2.5, -210, 210);
+
+        // Platform steering: when a solid is blocking, nudge perpendicular to go around it
+        const nextX = spike.x + (spike.vx ?? 0) * dt * 2;
+        const nextY = spike.y + (spike.vy ?? 0) * dt * 2;
+        const projected = { x: nextX, y: nextY, w: spike.w, h: spike.h };
+        for (const platform of this.activePlatforms(time)) {
+          if (intersects(projected, platform)) {
+            const pcx = platform.x + platform.w / 2;
+            const pcy = platform.y + platform.h / 2;
+            const spx = spike.x + spike.w / 2;
+            const spy = spike.y + spike.h / 2;
+            const perpX = spy - pcy;
+            const perpY = -(spx - pcx);
+            const plen = Math.hypot(perpX, perpY) || 1;
+            spike.vx = clamp((spike.vx ?? 0) + (perpX / plen) * 120 * dt, -210, 210);
+            spike.vy = clamp((spike.vy ?? 0) + (perpY / plen) * 120 * dt, -210, 210);
+            break;
+          }
+        }
+      } else if (this.magnetPulses.length > 0) {
         const center = rectCenter(spike);
         const target = nearestPulse(center, this.magnetPulses);
         const velocity = computeSpikeMagnetVelocity(center, target, 92, 260);
         spike.vx = clamp((spike.vx ?? 0) + velocity.x * dt * 3, -110, 110);
         spike.vy = clamp((spike.vy ?? 0) + velocity.y * dt * 3, -110, 110);
+      } else {
+        spike.vx = (spike.vx ?? 0) * 0.9;
+        spike.vy = (spike.vy ?? 0) * 0.9;
       }
 
       spike.x += (spike.vx ?? 0) * dt;
       spike.y += (spike.vy ?? 0) * dt;
-      spike.x = clamp(spike.x, spike.baseX - 46, spike.baseX + 46);
-      spike.y = clamp(spike.y, spike.baseY - 36, spike.baseY + 36);
+      // Larger roam range during hunt, tight during ghost-pulse mode
+      const rx = hunting ? 130 : 46;
+      const ry = hunting ? 90 : 36;
+      spike.x = clamp(spike.x, spike.baseX - rx, spike.baseX + rx);
+      spike.y = clamp(spike.y, spike.baseY - ry, spike.baseY + ry);
     }
   }
 
@@ -668,6 +706,9 @@ export class Game {
       coin.collected = true;
       this.levelCoins += coin.value;
       this.magnetPulses.push({ x: coin.x, y: coin.y, until: time + 1350 });
+      if (this.isModifierLive("coin_spike_magnet")) {
+        this.huntUntil = Math.max(this.huntUntil, time + 2800);
+      }
       this.burst(coin.x, coin.y, "#ffdc3f", 10);
       this.audio.play("coin");
     }
@@ -2175,14 +2216,26 @@ class AudioBus {
   private musicTimer = 0;
   private musicRunning = false;
 
-  // Simple chiptune: two 16-note phrases that loop
-  private static readonly MELODY = [
-    523, 659, 784, 1047, 659, 587, 523, 494,
-    523, 440, 523, 659,  784, 659, 523, 0,
-    523, 0,   659, 784,  1047,784, 659, 0,
-    523, 659, 523, 440,  523, 0,   494, 0,
+  // Two-voice chiptune in C minor — lead (32 notes) + bass (16 notes at 2× beat)
+  // Lead: urgent ascending hook, development, climax, return (C Aeolian)
+  private static readonly LEAD = [
+    392, 523, 622, 784,   831, 784, 622, 587,
+    523, 622, 698, 784,   698, 622, 587, 523,
+    784, 831, 784, 698,   622, 698, 784, 0,
+    523, 587, 622, 784,   698, 622, 587, 523,
   ];
-  private static readonly BEAT = 0.182;
+  // Bass: two notes per bar, root-fifth motion supporting the melody
+  private static readonly BASS = [
+    262, 392,   415, 311,
+    262, 349,   392, 0,
+    262, 311,   349, 392,
+    415, 392,   262, 262,
+  ];
+  private static readonly BEAT = 0.165;
+
+  private bassGain?: GainNode;
+  private bassBeat = 0;
+  private bassNextTime = 0;
 
   toggle(): void {
     this.muted = !this.muted;
@@ -2194,38 +2247,64 @@ class AudioBus {
   startMusic(): void {
     if (this.musicRunning || !this.ctx || !this.masterGain) return;
     this.musicRunning = true;
+    const t = this.ctx.currentTime + 0.2;
+
+    // Lead voice — square wave melody
     const mg = this.ctx.createGain();
-    mg.gain.value = 0.022;
+    mg.gain.value = 0.020;
     mg.connect(this.masterGain);
     this.musicGain = mg;
     this.musicBeat = 0;
-    this.musicNextTime = this.ctx.currentTime + 0.2;
+    this.musicNextTime = t;
+
+    // Bass voice — triangle wave, half speed
+    const bg = this.ctx.createGain();
+    bg.gain.value = 0.016;
+    bg.connect(this.masterGain);
+    this.bassGain = bg;
+    this.bassBeat = 0;
+    this.bassNextTime = t;
+
     this.pumpMusic();
   }
 
   private pumpMusic(): void {
     if (!this.ctx || !this.musicGain || !this.musicRunning) return;
     const ahead = 0.4;
+    const beat = AudioBus.BEAT;
+
+    // Schedule lead notes
     while (this.musicNextTime < this.ctx.currentTime + ahead) {
-      const freq = AudioBus.MELODY[this.musicBeat % AudioBus.MELODY.length];
-      if (freq > 0) this.scheduleChipNote(this.musicNextTime, freq, AudioBus.BEAT * 0.76);
+      const freq = AudioBus.LEAD[this.musicBeat % AudioBus.LEAD.length];
+      if (freq > 0) this.scheduleNote(this.musicNextTime, freq, beat * 0.74, this.musicGain!, "square");
       this.musicBeat++;
-      this.musicNextTime += AudioBus.BEAT;
+      this.musicNextTime += beat;
     }
+
+    // Schedule bass notes at 2× beat interval
+    if (this.bassGain) {
+      while (this.bassNextTime < this.ctx.currentTime + ahead) {
+        const freq = AudioBus.BASS[this.bassBeat % AudioBus.BASS.length];
+        if (freq > 0) this.scheduleNote(this.bassNextTime, freq, beat * 1.7, this.bassGain, "triangle");
+        this.bassBeat++;
+        this.bassNextTime += beat * 2;
+      }
+    }
+
     this.musicTimer = window.setTimeout(() => this.pumpMusic(), 110);
   }
 
-  private scheduleChipNote(time: number, freq: number, dur: number): void {
-    if (!this.ctx || !this.musicGain) return;
+  private scheduleNote(time: number, freq: number, dur: number, dest: GainNode, type: OscillatorType): void {
+    if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
     const env = this.ctx.createGain();
-    osc.type = "square";
+    osc.type = type;
     osc.frequency.value = freq;
     env.gain.setValueAtTime(0.0001, time);
-    env.gain.linearRampToValueAtTime(1, time + 0.008);
-    env.gain.setValueAtTime(1, time + dur * 0.55);
+    env.gain.linearRampToValueAtTime(1, time + 0.010);
+    env.gain.setValueAtTime(1, time + dur * 0.52);
     env.gain.linearRampToValueAtTime(0.0001, time + dur);
-    osc.connect(env).connect(this.musicGain);
+    osc.connect(env).connect(dest);
     osc.start(time);
     osc.stop(time + dur + 0.01);
   }
