@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { levels } from "../src/game/levels";
+import { canonicalPatches } from "../src/shared/run";
 import {
   canUseExit,
   computeSpikeMagnetVelocity,
@@ -43,9 +44,11 @@ describe("platformer helpers", () => {
     expect(far).toEqual({ x: 0, y: 0 });
   });
 
-  it("ships at least eleven levels including the original finale", () => {
-    expect(levels.length).toBeGreaterThanOrEqual(11);
+  it("ships thirty levels with run metadata kept in lockstep", () => {
+    expect(levels).toHaveLength(30);
+    expect(canonicalPatches).toHaveLength(levels.length);
     expect(levels[10]?.modifier).toBe("finale_combo");
+    expect(levels[29]?.modifier).toBe("finale_combo");
   });
 
   it("hides one optional bug report in every level", () => {

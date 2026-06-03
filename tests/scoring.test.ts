@@ -18,7 +18,7 @@ describe("run scoring", () => {
       seconds: 160,
       deaths: 1,
       coins: 35,
-      reports: 11,
+      reports: 30,
       results: [{ levelId: 1, patch: "1.0", seconds: 18, deaths: 0, coins: 3, report: true, medal: "gold" }],
     });
 

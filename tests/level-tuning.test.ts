@@ -26,6 +26,23 @@ describe("level tuning", () => {
     }
   });
 
+  it("does not auto-collect coins or rollback tokens at spawn", () => {
+    for (const level of levels) {
+      const center = {
+        x: level.start.x + level.start.w / 2,
+        y: level.start.y + level.start.h / 2,
+      };
+
+      for (const coin of level.coins) {
+        expect(distance(center, coin), `level ${level.id} coin ${coin.id}`).toBeGreaterThan(coin.r + 22);
+      }
+
+      for (const token of level.tokens ?? []) {
+        expect(distance(center, token), `level ${level.id} token ${token.id}`).toBeGreaterThan(token.r + 22);
+      }
+    }
+  });
+
   it("uses generous medal targets for mechanic-heavy patches", () => {
     const targets = Object.fromEntries(canonicalPatches.map((patch) => [patch.modifier, patch.targetTime]));
 
@@ -57,6 +74,10 @@ function hasSupport(level: LevelDefinition): boolean {
       report.y >= platform.y - 56 &&
       report.y <= platform.y + platform.h,
   );
+}
+
+function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function overlapsCircleRect(x: number, y: number, r: number, rect: { x: number; y: number; w: number; h: number }): boolean {

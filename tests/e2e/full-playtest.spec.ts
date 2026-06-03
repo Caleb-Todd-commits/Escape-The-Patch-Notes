@@ -11,13 +11,14 @@ interface DebugSnapshot {
 }
 
 test("clears every level normally and then with its replay challenge", async ({ page }) => {
+  const totalLevels = createFallbackRun("full-playtest").levels.length;
   await stubRunApi(page);
   await page.goto("/");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => Boolean(window.__patchNotesDebug));
 
-  for (let level = 1; level <= 11; level += 1) {
+  for (let level = 1; level <= totalLevels; level += 1) {
     const normalStart = await page.evaluate((currentLevel) => window.__patchNotesDebug!.startLevel(currentLevel), level);
     expect(normalStart.level).toBe(level);
     expect(normalStart.bonusChallenge).toBe(false);

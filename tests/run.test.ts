@@ -8,6 +8,7 @@ describe("run schema helpers", () => {
     expect(run.seed).toBe("judge-seed");
     expect(run.source).toBe("fallback");
     expect(run.levels).toHaveLength(canonicalPatches.length);
+    expect(run.levels).toHaveLength(30);
     expect(run.gameOverSummary).toContain("release failed");
   });
 
