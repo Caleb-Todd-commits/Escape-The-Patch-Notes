@@ -18,6 +18,13 @@ export interface TimedPlatform {
   off?: number;
 }
 
+export interface TimedHazard {
+  phase?: number;
+  on?: number;
+  off?: number;
+  warning?: number;
+}
+
 export function intersects(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
@@ -49,12 +56,41 @@ export function isPlatformActive(platform: TimedPlatform, elapsed: number): bool
   return local < on;
 }
 
+export function isTimedHazardActive(hazard: TimedHazard, elapsed: number): boolean {
+  const on = hazard.on ?? 1;
+  const off = hazard.off ?? 0;
+  if (off <= 0) {
+    return true;
+  }
+
+  const period = on + off;
+  const local = (elapsed + (hazard.phase ?? 0)) % period;
+  return local < on;
+}
+
+export function isTimedHazardWarning(hazard: TimedHazard, elapsed: number): boolean {
+  const on = hazard.on ?? 1;
+  const off = hazard.off ?? 0;
+  const warning = hazard.warning ?? 0.35;
+  if (off <= 0 || warning <= 0) {
+    return false;
+  }
+
+  const period = on + off;
+  const local = (elapsed + (hazard.phase ?? 0)) % period;
+  return local >= period - warning || local < Math.min(on, warning * 0.4);
+}
+
 export function jumpImpulseForModifier(modifier: PatchModifier, rollbackActive = false): number {
   if (!rollbackActive && (modifier === "jump_nerf" || modifier === "finale_combo")) {
     return 490;
   }
 
   return 580;
+}
+
+export function doubleJumpImpulse(baseImpulse: number): number {
+  return Math.round(baseImpulse * 0.78);
 }
 
 export function frictionForModifier(modifier: PatchModifier, rollbackActive = false): number {

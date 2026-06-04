@@ -4,19 +4,30 @@ import {
   type BugReport,
   type Coin,
   type GravityMode,
+  type JumpPad,
   type LevelDefinition,
+  type LockdownDoor,
   type Platform,
+  type PlasmaVent,
   type RollbackToken,
+  type SecuritySensor,
   type Spike,
+  type SweepLaser,
+  type TeslaArc,
+  type TimedHazardRect,
+  type TrackHazard,
 } from "./levels";
 import {
   canUseExit,
   clamp,
   computeSpikeMagnetVelocity,
   distance,
+  doubleJumpImpulse,
   frictionForModifier,
   intersects,
   isPlatformActive,
+  isTimedHazardActive,
+  isTimedHazardWarning,
   jumpImpulseForModifier,
   rectCenter,
   type Rect,
@@ -38,6 +49,7 @@ type GameMode =
   | "title"
   | "releaseBoard"
   | "devDialog"
+  | "chapterIntro"
   | "levelIntro"
   | "playing"
   | "paused"
@@ -50,6 +62,7 @@ interface Player extends Rect {
   vx: number;
   vy: number;
   grounded: boolean;
+  airJumpsUsed: number;
 }
 
 interface PlatformState extends Platform {
@@ -75,12 +88,35 @@ interface BugReportState extends BugReport {
   collected?: boolean;
 }
 
+interface MovingTechState extends TrackHazard {
+  baseX: number;
+  baseY: number;
+}
+
+interface SweepLaserState extends SweepLaser {
+  baseX: number;
+  baseY: number;
+}
+
+interface SecuritySensorState extends SecuritySensor {
+  triggered?: boolean;
+}
+
 interface LevelState extends Omit<LevelDefinition, "platforms" | "coins" | "spikes" | "tokens" | "bugReport"> {
   platforms: PlatformState[];
   coins: CoinState[];
   spikes: SpikeState[];
   tokens: RollbackTokenState[];
   bugReport?: BugReportState;
+  laserGates: TimedHazardRect[];
+  sweepLasers: SweepLaserState[];
+  razors: MovingTechState[];
+  crushers: MovingTechState[];
+  teslaArcs: TeslaArc[];
+  sensors: SecuritySensorState[];
+  plasmaVents: PlasmaVent[];
+  jumpPads: JumpPad[];
+  doors: LockdownDoor[];
 }
 
 interface MagnetPulse {
@@ -105,6 +141,9 @@ interface DebugSnapshot {
   mode: GameMode;
   level: number;
   bonusChallenge: boolean;
+  highlightRunActive: boolean;
+  doubleJumpUnlocked: boolean;
+  challengeComplete: boolean;
   reportVisible: boolean;
   reportCollected: boolean;
   coins: number;
@@ -115,6 +154,7 @@ interface DebugSnapshot {
 interface PatchNotesDebug {
   snapshot: () => DebugSnapshot;
   startLevel: (levelNumber: number) => DebugSnapshot;
+  startHighlights: () => DebugSnapshot;
   completeLevel: (seconds?: number) => DebugSnapshot;
   collectReport: () => DebugSnapshot;
   setCompleted: (levelNumber: number, progress?: Partial<LevelProgress>) => DebugSnapshot;
@@ -136,7 +176,9 @@ interface Bindings {
 
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
 const SETTINGS_ROWS = 8; // name, left, right, jump, pause, touch, game select, factory reset
-const RELEASE_BOARD_PAGE_SIZE = 10;
+const CHAPTER_TWO_START_INDEX = 30;
+const HIGHLIGHT_SEQUENCE = [2, 3, 29, 32, 39];
+const JUDGE_HIGHLIGHTS = HIGHLIGHT_SEQUENCE;
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -144,6 +186,8 @@ const PLAYER_SPEED = 245;
 const ACCEL = 1800;
 const GRAVITY = 1420;
 const MAX_FALL = 780;
+const COYOTE_MS = 105;
+const JUMP_BUFFER_MS = 130;
 const LEVEL_INTRO_MS = 1050;
 const LEVEL_COMPLETE_MS = 1650;
 const GAME_OVER_MS = 900;
@@ -155,6 +199,7 @@ const FINAL_MODIFIERS: PatchModifier[] = [
   "async_platforms",
   "rollback_token",
 ];
+type EngineerMood = "confident" | "worried" | "proud" | "exhausted";
 
 export class Game {
   private readonly ctx: CanvasRenderingContext2D;
@@ -197,6 +242,21 @@ export class Game {
   private message = "";
   private messageUntil = 0;
   private jumpQueued = false;
+  private jumpBufferedUntil = 0;
+  private coyoteUntil = 0;
+  private jumpHeld = false;
+  private secondJumpUsed = false;
+  private rollbackUses = 0;
+  private sensorTrips = 0;
+  private lockdownUntil = 0;
+  private lastJumpPadId = "";
+  private exitedPadIndex = 0;
+  private highlightRunActive = false;
+  private highlightStep = 0;
+  private chapterIntroShown = false;
+  private chapterIntroProceed: (() => void) | null = null;
+  private doubleJumpUnlockUntil = 0;
+  private medalRevealUntil = 0;
   private groundedPlatformId = "";
   private shareUrl = "";
   private levelPauseStart = 0;
@@ -307,6 +367,11 @@ export class Game {
           return;
         }
 
+        if (this.mode === "chapterIntro") {
+          this.advanceChapterIntro();
+          return;
+        }
+
         if (this.mode === "title") {
           if (event.code === "Space") {
             this.startRunAt(0);
@@ -340,8 +405,10 @@ export class Game {
         }
       }
 
-      if (event.code === this.bindings.jump || event.code === "KeyW" || event.code === "ArrowUp") {
+      if (!event.repeat && this.isJumpCode(event.code)) {
         this.jumpQueued = true;
+        this.jumpHeld = true;
+        this.jumpBufferedUntil = performance.now() + JUMP_BUFFER_MS;
       }
 
       this.keys.add(event.code);
@@ -349,11 +416,19 @@ export class Game {
 
     window.addEventListener("keyup", (event) => {
       this.keys.delete(event.code);
+      if (this.isJumpCode(event.code)) {
+        this.jumpHeld = false;
+        this.cutJumpVelocity();
+      }
     });
 
     this.canvas.addEventListener("pointerdown", (e) => {
       if (this.mode === "devDialog") {
         this.advanceDevDialog();
+        return;
+      }
+      if (this.mode === "chapterIntro") {
+        this.advanceChapterIntro();
         return;
       }
       const rect = this.canvas.getBoundingClientRect();
@@ -397,6 +472,9 @@ export class Game {
     this.levelDeaths = 0;
     this.results = [];
     this.particles = [];
+    this.highlightRunActive = false;
+    this.highlightStep = 0;
+    this.chapterIntroShown = false;
     this.runStartedAt = performance.now();
     this.runPausedMs = 0;
     this.runPauseStart = 0;
@@ -416,20 +494,41 @@ export class Game {
       spikes: definition.spikes.map((item) => ({ ...item, baseX: item.x, baseY: item.y, vx: 0, vy: 0 })),
       tokens: (definition.tokens ?? []).map((item) => ({ ...item, collected: false })),
       bugReport: definition.bugReport ? { ...definition.bugReport, collected: false } : undefined,
+      laserGates: (definition.laserGates ?? []).map((item) => ({ ...item })),
+      sweepLasers: (definition.sweepLasers ?? []).map((item) => ({ ...item, baseX: item.x, baseY: item.y })),
+      razors: (definition.razors ?? []).map((item) => ({ ...item, baseX: item.x, baseY: item.y })),
+      crushers: (definition.crushers ?? []).map((item) => ({ ...item, baseX: item.x, baseY: item.y })),
+      teslaArcs: (definition.teslaArcs ?? []).map((item) => ({ ...item })),
+      sensors: (definition.sensors ?? []).map((item) => ({ ...item, triggered: false })),
+      plasmaVents: (definition.plasmaVents ?? []).map((item) => ({ ...item })),
+      jumpPads: (definition.jumpPads ?? []).map((item) => ({ ...item })),
+      doors: (definition.doors ?? []).map((item) => ({ ...item })),
     };
     this.player = {
       ...definition.start,
       vx: 0,
       vy: 0,
       grounded: false,
+      airJumpsUsed: 0,
     };
     this.levelCoins = 0;
     this.rollbackUntil = 0;
+    this.jumpQueued = false;
+    this.jumpBufferedUntil = 0;
+    this.coyoteUntil = 0;
+    this.jumpHeld = false;
+    this.rollbackUses = 0;
+    this.secondJumpUsed = false;
+    this.sensorTrips = 0;
+    this.lockdownUntil = 0;
+    this.lastJumpPadId = "";
+    this.exitedPadIndex = 0;
     this.magnetPulses = [];
     this.huntUntil = 0;
     this.bonusChallengeActive = false;
     this.message = "";
     this.messageUntil = 0;
+    this.medalRevealUntil = 0;
     this.levelStartedAt = performance.now();
     this.levelPausedMs = 0;
     this.levelPauseStart = 0;
@@ -461,10 +560,12 @@ export class Game {
   private updateCamera(): void {
     const bw = this.level.bounds.w;
     const bh = this.level.bounds.h;
-    const tx = clamp(this.player.x + this.player.w / 2 - VIEW_W / 2, 0, Math.max(0, bw - VIEW_W));
-    const ty = clamp(this.player.y + this.player.h / 2 - VIEW_H / 2, 0, Math.max(0, bh - VIEW_H));
-    this.camera.x += (tx - this.camera.x) * 0.1;
-    this.camera.y += (ty - this.camera.y) * 0.1;
+    const leadX = clamp(this.player.vx * 0.16, -118, 118);
+    const leadY = clamp(this.player.vy * 0.08, -56, 74);
+    const tx = clamp(this.player.x + this.player.w / 2 + leadX - VIEW_W / 2, 0, Math.max(0, bw - VIEW_W));
+    const ty = clamp(this.player.y + this.player.h / 2 + leadY - VIEW_H / 2, 0, Math.max(0, bh - VIEW_H));
+    this.camera.x += (tx - this.camera.x) * 0.14;
+    this.camera.y += (ty - this.camera.y) * 0.14;
     if (Math.abs(tx - this.camera.x) < 0.5) this.camera.x = tx;
     if (Math.abs(ty - this.camera.y) < 0.5) this.camera.y = ty;
   }
@@ -485,12 +586,28 @@ export class Game {
     }
   }
 
+  private updateModernHazards(time: number): void {
+    const elapsed = this.levelElapsed(time);
+    for (const hazard of [...this.level.sweepLasers, ...this.level.razors, ...this.level.crushers]) {
+      const wave = Math.sin(elapsed * hazard.speed * Math.PI * 2 + (hazard.phase ?? 0));
+      if (hazard.axis === "x") {
+        hazard.x = hazard.baseX + wave * hazard.range;
+        hazard.y = hazard.baseY;
+      } else {
+        hazard.x = hazard.baseX;
+        hazard.y = hazard.baseY + wave * hazard.range;
+      }
+    }
+  }
+
   private update(dt: number, time: number): void {
     this.updatePlayer(dt, time);
     if (this.mode !== "playing") return;
     this.updateMovingPlatforms(dt, time);
     if (this.mode !== "playing") return;
     this.updateCrumblingPlatforms(dt);
+    if (this.mode !== "playing") return;
+    this.updateModernHazards(time);
     if (this.mode !== "playing") return;
     this.updateSpikes(dt, time);
     if (this.mode !== "playing") return;
@@ -509,6 +626,10 @@ export class Game {
     const input = this.inputAxis();
     const friction = frictionForModifier(this.level.modifier, rollbackActive);
 
+    if (this.player.grounded) {
+      this.coyoteUntil = time + COYOTE_MS;
+    }
+
     if (lateral.x !== 0) {
       this.player.vx += input * ACCEL * dt;
       if (input === 0) {
@@ -526,21 +647,59 @@ export class Game {
       this.player.vy = clamp(this.player.vy, -PLAYER_SPEED, PLAYER_SPEED);
     }
 
-    if (this.jumpQueued && this.player.grounded) {
+    const jumpRequested = this.jumpQueued || time <= this.jumpBufferedUntil;
+    const groundedEnough = this.player.grounded || time <= this.coyoteUntil;
+    if (jumpRequested && groundedEnough) {
       const jump = jumpImpulseForModifier(this.level.modifier, rollbackActive);
+      if (gravity.x !== 0 && this.player.vx * gravity.x > 0) {
+        this.player.vx = 0;
+      }
+      if (gravity.y !== 0 && this.player.vy * gravity.y > 0) {
+        this.player.vy = 0;
+      }
       this.player.vx += -gravity.x * jump;
       this.player.vy += -gravity.y * jump;
       this.player.grounded = false;
+      this.player.airJumpsUsed = 0;
+      this.coyoteUntil = 0;
+      this.jumpQueued = false;
+      this.jumpBufferedUntil = 0;
       this.audio.play("jump");
+    } else if (jumpRequested && this.canDoubleJump()) {
+      const jump = doubleJumpImpulse(jumpImpulseForModifier(this.level.modifier, rollbackActive));
+      if (gravity.x !== 0 && this.player.vx * gravity.x > 0) {
+        this.player.vx = 0;
+      }
+      if (gravity.y !== 0 && this.player.vy * gravity.y > 0) {
+        this.player.vy = 0;
+      }
+      this.player.vx += -gravity.x * jump;
+      this.player.vy += -gravity.y * jump;
+      this.player.airJumpsUsed += 1;
+      this.secondJumpUsed = true;
+      this.jumpQueued = false;
+      this.jumpBufferedUntil = 0;
+      this.burst(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2, "#70f5ff", 20, "AIR");
+      this.shake(3, 120);
+      this.audio.play("doubleJump");
+    } else if (time > this.jumpBufferedUntil) {
+      this.jumpQueued = false;
     }
-    this.jumpQueued = false;
 
     this.player.vx += gravity.x * GRAVITY * dt;
     this.player.vy += gravity.y * GRAVITY * dt;
     this.player.vx = clamp(this.player.vx, -MAX_FALL, MAX_FALL);
     this.player.vy = clamp(this.player.vy, -MAX_FALL, MAX_FALL);
 
+    const wasGrounded = this.player.grounded;
     this.moveAndCollide(dt, time);
+    if (!wasGrounded && this.player.grounded) {
+      this.coyoteUntil = time + COYOTE_MS;
+      const center = rectCenter(this.player);
+      this.burst(center.x, center.y + this.player.h / 2, "#cde9ff", 8);
+    }
+    this.applyConveyor(dt);
+    this.applyJumpPads();
 
     if (lateral.x !== 0 && input !== 0) {
       this.facing = input > 0 ? "right" : "left";
@@ -559,7 +718,7 @@ export class Game {
 
   private moveAndCollide(dt: number, time: number): void {
     const gravity = gravityVector(this.level.gravity);
-    const solids = this.activePlatforms(time);
+    const solids = this.activeCollisionSolids(time);
     this.player.grounded = false;
     this.groundedPlatformId = "";
 
@@ -606,6 +765,10 @@ export class Game {
       }
       this.player.vy = 0;
     }
+
+    if (this.player.grounded) {
+      this.player.airJumpsUsed = 0;
+    }
   }
 
   private levelElapsed(time: number): number {
@@ -627,6 +790,29 @@ export class Game {
       }
 
       return true;
+    });
+  }
+
+  private activeCollisionSolids(time: number): Array<Rect & { id: string }> {
+    return [...this.activePlatforms(time), ...this.activeDoors(time)];
+  }
+
+  private activeDoors(time: number): LockdownDoor[] {
+    const elapsed = this.levelElapsed(time);
+    return this.level.doors.filter((door) => {
+      if (door.requiredCoins !== undefined && this.levelCoins >= door.requiredCoins) {
+        return false;
+      }
+
+      if (door.opensAfter !== undefined && elapsed >= door.opensAfter) {
+        return false;
+      }
+
+      if (door.linkedToLockdown) {
+        return time < this.lockdownUntil;
+      }
+
+      return door.requiredCoins !== undefined || door.opensAfter !== undefined;
     });
   }
 
@@ -735,6 +921,7 @@ export class Game {
       }
 
       token.collected = true;
+      this.rollbackUses += 1;
       this.rollbackUntil = Math.max(this.rollbackUntil, time + token.seconds * 1000);
       this.toast("Rollback window open");
       this.burst(token.x, token.y, "#87ffc4", 16);
@@ -742,7 +929,7 @@ export class Game {
       this.audio.play("rollback");
     }
 
-    const report = this.bonusChallengeActive ? this.level.bugReport : undefined;
+    const report = this.bonusChallengeActive && this.challengeType() === "bug_report" ? this.level.bugReport : undefined;
     if (report && !report.collected && distance(playerCenter, report) <= report.r + 22) {
       report.collected = true;
       this.toast(`Bug filed: ${report.title}`);
@@ -753,6 +940,9 @@ export class Game {
   }
 
   private checkHazards(time: number): void {
+    this.checkSecuritySensors(time);
+    if (this.mode !== "playing") return;
+
     for (const spike of this.level.spikes) {
       const hitbox = { x: spike.x + 6, y: spike.y + 6, w: spike.w - 12, h: spike.h - 8 };
       if (intersects(this.player, hitbox)) {
@@ -769,6 +959,82 @@ export class Game {
         }
       }
     }
+
+    if (this.checkModernHazards(time)) {
+      return;
+    }
+  }
+
+  private checkSecuritySensors(time: number): void {
+    if (this.isRollbackActive(time)) {
+      return;
+    }
+
+    for (const sensor of this.level.sensors) {
+      if (!intersects(this.player, sensor)) {
+        continue;
+      }
+
+      if (!sensor.triggered) {
+        sensor.triggered = true;
+        this.sensorTrips += 1;
+        this.lockdownUntil = Math.max(this.lockdownUntil, time + (sensor.duration ?? 3) * 1000);
+        this.toast("LOCKDOWN TRIGGERED");
+        this.shake(5, 170);
+        this.audio.play("error");
+      }
+    }
+  }
+
+  private checkModernHazards(time: number): boolean {
+    const rollbackActive = this.isRollbackActive(time);
+    const elapsed = this.levelElapsed(time);
+
+    if (!rollbackActive) {
+      for (const laser of this.level.laserGates) {
+        if (isTimedHazardActive(laser, elapsed) && intersects(this.player, shrinkRect(laser, 3))) {
+          this.die("Laser gate shipped you first");
+          return true;
+        }
+      }
+
+      for (const laser of this.level.sweepLasers) {
+        if (isTimedHazardActive(laser, elapsed) && intersects(this.player, shrinkRect(laser, 3))) {
+          this.die("Sweep laser completed its pass");
+          return true;
+        }
+      }
+
+      for (const arc of this.level.teslaArcs) {
+        if (isTimedHazardActive(arc, elapsed) && intersects(this.player, teslaHitbox(arc))) {
+          this.die("Merge conflict resolved you");
+          return true;
+        }
+      }
+
+      for (const vent of this.level.plasmaVents) {
+        if (isTimedHazardActive(vent, elapsed) && intersects(this.player, plasmaBeamRect(vent))) {
+          this.die("Cooling system overcorrected");
+          return true;
+        }
+      }
+    }
+
+    for (const razor of this.level.razors) {
+      if (intersects(this.player, shrinkRect(razor, 5))) {
+        this.die("Razor indexer found you");
+        return true;
+      }
+    }
+
+    for (const crusher of this.level.crushers) {
+      if (intersects(this.player, shrinkRect(crusher, 4))) {
+        this.die("Compression panel closed the issue");
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private checkExit(time: number): void {
@@ -788,6 +1054,7 @@ export class Game {
       return;
     }
 
+    this.exitedPadIndex = this.activeExitIndex(time);
     this.completeLevel(time);
   }
 
@@ -798,9 +1065,10 @@ export class Game {
 
     const elapsed = this.levelElapsed(time);
     const patch = this.currentPatch();
-    const report = this.bonusChallengeActive && Boolean(this.level.bugReport?.collected);
-    const bonusComplete = !this.bonusChallengeActive || report;
-    const medal = medalForLevel(elapsed, patch.targetTime, this.levelDeaths, bonusComplete);
+    const report = this.bonusChallengeActive && this.challengeType() === "bug_report" && Boolean(this.level.bugReport?.collected);
+    const challenge = this.bonusChallengeActive && this.isChallengeComplete(elapsed);
+    const objectiveComplete = !this.bonusChallengeActive || challenge;
+    const medal = medalForLevel(elapsed, patch.targetTime, this.levelDeaths, objectiveComplete);
     this.results[this.levelIndex] = {
       levelId: this.level.id,
       patch: patch.version,
@@ -808,13 +1076,18 @@ export class Game {
       deaths: this.levelDeaths,
       coins: this.levelCoins,
       report,
+      challenge,
       medal,
     };
     this.totalCoins += this.levelCoins;
-    this.totalReports += report ? 1 : 0;
+    this.totalReports += challenge ? 1 : 0;
     this.levelProgress = updateLevelProgress(this.levelProgress, this.results[this.levelIndex]);
     saveLevelProgress(this.levelProgress);
     this.levelCompletedAt = time;
+    this.medalRevealUntil = time + 920;
+    if (this.level.id === 33) {
+      this.doubleJumpUnlockUntil = time + 2600;
+    }
     this.setMode("levelComplete");
     this.toast(`${medal.toUpperCase()} PATCH`);
     this.burst(this.player.x + this.player.w / 2, this.player.y + this.player.h / 2, medalColor(medal), 28);
@@ -823,6 +1096,22 @@ export class Game {
   }
 
   private advanceLevel(): void {
+    if (this.highlightRunActive) {
+      const nextStep = this.highlightStep + 1;
+      if (nextStep >= HIGHLIGHT_SEQUENCE.length) {
+        this.setMode("gameComplete");
+        return;
+      }
+
+      this.highlightStep = nextStep;
+      this.levelIndex = HIGHLIGHT_SEQUENCE[this.highlightStep];
+      this.boardSelection = this.levelIndex;
+      this.levelDeaths = 0;
+      this.resetLevel();
+      this.startLevelIntro();
+      return;
+    }
+
     if (this.levelIndex >= levels.length - 1) {
       this.setMode("gameComplete");
       return;
@@ -834,9 +1123,12 @@ export class Game {
     this.startLevelIntro();
   }
 
-  private startRunAt(index: number): void {
+  private startRunAt(index: number, options: { highlight?: boolean; highlightStep?: number } = {}): void {
     this.levelIndex = clamp(index, 0, levels.length - 1);
     this.boardSelection = this.levelIndex;
+    this.highlightRunActive = Boolean(options.highlight);
+    this.highlightStep = options.highlightStep ?? 0;
+    this.chapterIntroShown = false;
     this.totalCoins = 0;
     this.totalReports = 0;
     this.deaths = 0;
@@ -850,10 +1142,15 @@ export class Game {
     this.startLevelIntro();
   }
 
+  private startHighlightRun(): void {
+    this.startRunAt(HIGHLIGHT_SEQUENCE[0], { highlight: true, highlightStep: 0 });
+    this.toast("Judge highlights route");
+  }
+
   private handleBoardInput(code: string): void {
-    const columns = 2;
     const current = this.boardSelection;
     const range = boardPageRange(current, levels.length);
+    const columns = boardColumnsForRange(range);
 
     if (code === "ArrowLeft") {
       this.boardSelection = current > range.start ? current - 1 : previousBoardPageStart(current, levels.length);
@@ -872,6 +1169,13 @@ export class Game {
     }
     if (code === "PageDown" || code === "KeyE") {
       this.boardSelection = nextBoardPageStart(current, levels.length);
+    }
+    if (code === "KeyH") {
+      const currentHighlight = JUDGE_HIGHLIGHTS.findIndex((index) => index >= this.boardSelection);
+      const next = currentHighlight >= 0 && JUDGE_HIGHLIGHTS[currentHighlight] === this.boardSelection
+        ? JUDGE_HIGHLIGHTS[(currentHighlight + 1) % JUDGE_HIGHLIGHTS.length]
+        : JUDGE_HIGHLIGHTS[Math.max(0, currentHighlight)];
+      this.boardSelection = next ?? JUDGE_HIGHLIGHTS[0];
     }
 
     if (code === "Enter" || code === "Space" || code === "KeyR") {
@@ -914,14 +1218,35 @@ export class Game {
     // Levels 1–3 show the full dev dialog before the patch intro card
     const patch = this.currentPatch();
     const lines = patch.devLines ?? [];
-    if (this.levelIndex < 3 && lines.length > 0) {
-      this.devDialogLines = lines;
-      this.devDialogSlide = 0;
-      this.devDialogProceed = () => this.beginPatchIntro(time);
-      this.setMode("devDialog");
-    } else {
-      this.beginPatchIntro(time);
+    const continueIntro = () => {
+      if (this.levelIndex < 3 && lines.length > 0) {
+        this.devDialogLines = lines;
+        this.devDialogSlide = 0;
+        this.devDialogProceed = () => this.beginPatchIntro(time);
+        this.setMode("devDialog");
+      } else {
+        this.beginPatchIntro(time);
+      }
+    };
+
+    if (this.shouldShowChapterIntro()) {
+      this.chapterIntroShown = true;
+      this.chapterIntroProceed = continueIntro;
+      this.setMode("chapterIntro");
+      return;
     }
+
+    continueIntro();
+  }
+
+  private shouldShowChapterIntro(): boolean {
+    return this.level.chapter === "production_floor" && !this.chapterIntroShown;
+  }
+
+  private advanceChapterIntro(): void {
+    this.audio.play("start");
+    this.chapterIntroProceed?.();
+    this.chapterIntroProceed = null;
   }
 
   private beginPatchIntro(time: number): void {
@@ -950,6 +1275,90 @@ export class Game {
     return Number(right) - Number(left);
   }
 
+  private isJumpCode(code: string): boolean {
+    return code === this.bindings.jump || code === "KeyW" || code === "ArrowUp";
+  }
+
+  private cutJumpVelocity(): void {
+    if (this.mode !== "playing") {
+      return;
+    }
+
+    const gravity = gravityVector(this.level.gravity);
+    const upwardSpeed = -(this.player.vx * gravity.x + this.player.vy * gravity.y);
+    if (upwardSpeed <= 90) {
+      return;
+    }
+
+    const trim = upwardSpeed * 0.45;
+    this.player.vx += gravity.x * trim;
+    this.player.vy += gravity.y * trim;
+  }
+
+  private hasDoubleJumpUnlocked(): boolean {
+    if (this.level.id < 31) {
+      return false;
+    }
+
+    return this.level.id >= 34 || Boolean(this.levelProgress[33]?.completed);
+  }
+
+  private canDoubleJump(): boolean {
+    return this.hasDoubleJumpUnlocked() && !this.player.grounded && this.player.airJumpsUsed < 1;
+  }
+
+  private applyConveyor(dt: number): void {
+    if (!this.player.grounded || !this.groundedPlatformId) {
+      return;
+    }
+
+    const platform = this.level.platforms.find((item) => item.id === this.groundedPlatformId);
+    if (!platform || platform.kind !== "conveyor") {
+      return;
+    }
+
+    const speed = platform.conveyorSpeed ?? 0;
+    if (this.level.gravity === "right") {
+      this.player.y += speed * dt;
+    } else {
+      this.player.x += speed * dt;
+    }
+  }
+
+  private applyJumpPads(): void {
+    const gravity = gravityVector(this.level.gravity);
+    let touched = "";
+
+    for (const pad of this.level.jumpPads) {
+      if (!intersects(this.player, pad)) {
+        continue;
+      }
+
+      touched = pad.id;
+      if (this.lastJumpPadId === pad.id) {
+        break;
+      }
+
+      const force = pad.force;
+      if (gravity.x !== 0) {
+        this.player.vx = -gravity.x * force;
+      } else {
+        this.player.vy = -gravity.y * force;
+      }
+      this.player.grounded = false;
+      this.player.airJumpsUsed = 0;
+      this.lastJumpPadId = pad.id;
+      this.burst(pad.x + pad.w / 2, pad.y + pad.h / 2, "#70f5ff", 14);
+      this.shake(3, 120);
+      this.audio.play("jump");
+      break;
+    }
+
+    if (!touched) {
+      this.lastJumpPadId = "";
+    }
+  }
+
   private isRollbackActive(time = performance.now()): boolean {
     return time < this.rollbackUntil;
   }
@@ -964,12 +1373,49 @@ export class Game {
 
   private activeExit(time: number): Rect {
     if (this.level.exit.pads && this.level.exit.pads.length > 0) {
-      const elapsed = this.levelElapsed(time);
-      const index = Math.floor(elapsed / 2.1) % this.level.exit.pads.length;
-      return this.level.exit.pads[index];
+      return this.level.exit.pads[this.activeExitIndex(time)];
     }
 
     return this.level.exit;
+  }
+
+  private activeExitIndex(time: number): number {
+    if (!this.level.exit.pads || this.level.exit.pads.length === 0) {
+      return 0;
+    }
+
+    const elapsed = this.levelElapsed(time);
+    return Math.floor(elapsed / 2.1) % this.level.exit.pads.length;
+  }
+
+  private challengeType(): NonNullable<LevelDefinition["challenge"]>["type"] {
+    return this.level.challenge?.type ?? "bug_report";
+  }
+
+  private challengeLabel(): string {
+    return this.level.challenge?.label ?? "File the hidden bug report before shipping.";
+  }
+
+  private isChallengeComplete(elapsed: number): boolean {
+    switch (this.challengeType()) {
+      case "bug_report":
+        return Boolean(this.level.bugReport?.collected);
+      case "all_coins":
+        return this.level.coins.every((coin) => coin.collected);
+      case "par_time":
+        return elapsed <= (this.level.challenge?.parTime ?? this.currentPatch().targetTime);
+      case "no_sensor":
+        return this.sensorTrips === 0;
+      case "no_rollback":
+        return this.rollbackUses === 0;
+      case "no_double_jump":
+        return !this.secondJumpUsed;
+      case "first_exit":
+        return this.exitedPadIndex === 0;
+      case "master":
+        return this.level.coins.every((coin) => coin.collected) &&
+          elapsed <= (this.level.challenge?.parTime ?? this.currentPatch().targetTime);
+    }
   }
 
   private setMode(mode: GameMode): void {
@@ -1003,6 +1449,9 @@ export class Game {
     document.body.dataset.level = String(level);
     document.body.dataset.boardSelection = String(this.boardSelection + 1);
     document.body.dataset.bonusChallenge = boardBonus ? "active" : "locked";
+    document.body.dataset.runSource = this.run.source;
+    document.body.dataset.highlightRun = this.highlightRunActive ? "active" : "inactive";
+    document.body.dataset.doubleJump = this.level && this.hasDoubleJumpUnlocked() ? "unlocked" : "locked";
     if (this.status) {
       this.status.textContent = `${this.mode}, level ${level}, coins ${this.levelCoins}, deaths ${this.deaths}`;
     }
@@ -1050,6 +1499,12 @@ export class Game {
       return;
     }
 
+    if (this.mode === "chapterIntro") {
+      this.drawChapterIntro(ctx, time);
+      ctx.restore();
+      return;
+    }
+
     this.drawWorld(ctx, time);
     this.drawHud(ctx, time);
 
@@ -1085,6 +1540,25 @@ export class Game {
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     }
 
+    if (this.level?.chapter === "production_floor") {
+      ctx.fillStyle = "rgba(112,245,255,0.08)";
+      for (let x = -80; x < VIEW_W + 120; x += 96) {
+        const drift = (time / 42 + x * 0.23) % 96;
+        ctx.fillRect(x + drift, 0, 2, VIEW_H);
+      }
+      ctx.fillStyle = "rgba(255,79,129,0.08)";
+      for (let y = 34; y < VIEW_H; y += 86) {
+        ctx.fillRect(0, y, VIEW_W, 2);
+      }
+      for (let i = 0; i < 12; i += 1) {
+        const x = (i * 173 + Math.sin(time / 700 + i) * 16) % VIEW_W;
+        const y = 72 + ((i * 61 + time / 35) % (VIEW_H - 120));
+        ctx.fillStyle = i % 2 === 0 ? "rgba(112,245,255,0.18)" : "rgba(255,220,63,0.13)";
+        ctx.fillRect(x, y, 38 + (i % 3) * 18, 3);
+      }
+      return;
+    }
+
     // Star field tinted to match the level's color palette
     ctx.fillStyle = `rgba(${hexLighter(bg, 110)}, 0.18)`;
     for (let i = 0; i < 48; i += 1) {
@@ -1111,9 +1585,25 @@ export class Game {
     ctx.save();
     ctx.translate(-cx, -cy);
 
+    if (this.level.chapter === "production_floor") {
+      this.drawProductionWorld(ctx, time);
+    }
+
     const activeIds = new Set(this.activePlatforms(time).map((item) => item.id));
     for (const platform of this.level.platforms) {
       this.drawPlatform(ctx, platform, activeIds.has(platform.id), time);
+    }
+
+    for (const door of this.level.doors) {
+      this.drawLockdownDoor(ctx, door, this.activeDoors(time).some((active) => active.id === door.id), time);
+    }
+
+    for (const pad of this.level.jumpPads) {
+      this.drawJumpPad(ctx, pad, time);
+    }
+
+    for (const sensor of this.level.sensors) {
+      this.drawSecuritySensor(ctx, sensor, time);
     }
 
     if (this.level.exit.pads) {
@@ -1141,12 +1631,14 @@ export class Game {
     for (const token of this.level.tokens) {
       if (!token.collected) this.drawRollbackToken(ctx, token, time);
     }
-    if (this.bonusChallengeActive && this.level.bugReport && !this.level.bugReport.collected) {
+    if (this.bonusChallengeActive && this.challengeType() === "bug_report" && this.level.bugReport && !this.level.bugReport.collected) {
       this.drawBugReport(ctx, this.level.bugReport, time);
     }
     for (const spike of this.level.spikes) {
       this.drawSpike(ctx, spike);
     }
+
+    this.drawModernHazards(ctx, time);
 
     this.drawExit(ctx, this.activeExit(time), time);
     this.drawPlayer(ctx, time);
@@ -1200,8 +1692,37 @@ export class Game {
     drawText(ctx, "EXIT", x + (dir === "right" ? -s - 36 : dir === "left" ? s + 4 : -14), y + (dir === "down" ? -s - 6 : dir === "up" ? s + 16 : 5), 11, "#70f5ff", "bold");
   }
 
+  private drawProductionWorld(ctx: CanvasRenderingContext2D, time: number): void {
+    const b = this.level.bounds;
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.035)";
+    for (let x = b.x; x < b.x + b.w; x += 160) {
+      ctx.fillRect(x + 18, 52, 76, b.h - 104);
+      ctx.fillStyle = "rgba(112,245,255,0.16)";
+      ctx.fillRect(x + 28, 72 + ((time / 35 + x) % 82), 56, 4);
+      ctx.fillStyle = "rgba(255,255,255,0.035)";
+    }
+    ctx.fillStyle = "rgba(112,245,255,0.10)";
+    for (let x = b.x; x < b.x + b.w; x += 64) {
+      ctx.fillRect(x, b.h - 76, 42, 2);
+      ctx.fillRect(x + 18, 90, 2, b.h - 166);
+    }
+    ctx.fillStyle = "rgba(255,79,129,0.18)";
+    for (let x = b.x + 90; x < b.x + b.w; x += 260) {
+      const pulse = 0.35 + Math.sin(time / 220 + x) * 0.25;
+      ctx.globalAlpha = pulse;
+      ctx.fillRect(x, 42, 18, 18);
+    }
+    ctx.restore();
+  }
+
   private drawPlatform(ctx: CanvasRenderingContext2D, platform: PlatformState, active: boolean, time: number): void {
     if (platform.broken) {
+      return;
+    }
+
+    if (this.level.chapter === "production_floor") {
+      this.drawProductionPlatform(ctx, platform, active, time);
       return;
     }
 
@@ -1242,16 +1763,268 @@ export class Game {
     ctx.restore();
   }
 
+  private drawProductionPlatform(ctx: CanvasRenderingContext2D, platform: PlatformState, active: boolean, time: number): void {
+    const alpha = active ? 1 : 0.22;
+    const edge = platform.kind === "conveyor" ? "#ffdc3f" : platform.kind === "async" ? "#70f5ff" : "#58ffd4";
+    const fill = platform.kind === "conveyor" ? "#24303b" : platform.kind === "async" ? "#163c4c" : "#1a2934";
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = edge;
+    ctx.shadowBlur = active ? 10 : 0;
+    const gradient = ctx.createLinearGradient(platform.x, platform.y, platform.x, platform.y + platform.h);
+    gradient.addColorStop(0, "rgba(255,255,255,0.16)");
+    gradient.addColorStop(0.35, fill);
+    gradient.addColorStop(1, "#081018");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.roundRect(platform.x, platform.y, platform.w, platform.h, 7);
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(platform.x + 1, platform.y + 1, platform.w - 2, platform.h - 2, 6);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(112,245,255,0.18)";
+    ctx.beginPath();
+    ctx.roundRect(platform.x + 8, platform.y + 5, platform.w - 16, 3, 1.5);
+    ctx.fill();
+
+    if (platform.kind === "conveyor") {
+      const dir = (platform.conveyorSpeed ?? 0) >= 0 ? 1 : -1;
+      ctx.fillStyle = "rgba(255,220,63,0.72)";
+      for (let x = platform.x + 12 + ((time / 28) % 24); x < platform.x + platform.w - 12; x += 24) {
+        ctx.beginPath();
+        ctx.moveTo(x, platform.y + platform.h / 2 - 5);
+        ctx.lineTo(x + dir * 10, platform.y + platform.h / 2);
+        ctx.lineTo(x, platform.y + platform.h / 2 + 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    if (platform.kind === "async") {
+      const pulse = 0.5 + Math.sin(time / 150 + platform.x) * 0.5;
+      ctx.fillStyle = `rgba(112,245,255,${0.22 + pulse * 0.34})`;
+      ctx.beginPath();
+      ctx.roundRect(platform.x + 8, platform.y + platform.h - 7, platform.w - 16, 3, 1.5);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private drawLockdownDoor(ctx: CanvasRenderingContext2D, door: LockdownDoor, closed: boolean, time: number): void {
+    const pulse = 0.45 + Math.sin(time / 180 + door.x) * 0.25;
+    ctx.save();
+    ctx.globalAlpha = closed ? 1 : 0.24;
+    ctx.shadowColor = closed ? "#ff4f81" : "#58ffd4";
+    ctx.shadowBlur = closed ? 12 : 4;
+    ctx.fillStyle = closed ? "#231726" : "#102b2a";
+    ctx.beginPath();
+    ctx.roundRect(door.x, door.y, door.w, door.h, 5);
+    ctx.fill();
+    ctx.strokeStyle = closed ? "#ff4f81" : "#58ffd4";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(door.x + 1, door.y + 1, door.w - 2, door.h - 2, 4);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = closed ? `rgba(255,79,129,${0.28 + pulse})` : "rgba(88,255,212,0.25)";
+    for (let y = door.y + 10; y < door.y + door.h - 8; y += 18) {
+      ctx.fillRect(door.x + 5, y, door.w - 10, 3);
+    }
+    ctx.restore();
+  }
+
+  private drawJumpPad(ctx: CanvasRenderingContext2D, pad: JumpPad, time: number): void {
+    const pulse = 0.45 + Math.sin(time / 150 + pad.x) * 0.35;
+    ctx.shadowColor = "#70f5ff";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#081421";
+    ctx.beginPath();
+    ctx.roundRect(pad.x, pad.y, pad.w, pad.h, 8);
+    ctx.fill();
+    ctx.strokeStyle = "#70f5ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(pad.x + 1, pad.y + 1, pad.w - 2, pad.h - 2, 7);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = `rgba(112,245,255,${0.35 + pulse * 0.4})`;
+    ctx.beginPath();
+    ctx.moveTo(pad.x + pad.w / 2, pad.y - 16 - pulse * 6);
+    ctx.lineTo(pad.x + pad.w / 2 - 12, pad.y - 2);
+    ctx.lineTo(pad.x + pad.w / 2 + 12, pad.y - 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  private drawSecuritySensor(ctx: CanvasRenderingContext2D, sensor: SecuritySensorState, time: number): void {
+    const active = time < this.lockdownUntil || sensor.triggered;
+    ctx.save();
+    ctx.fillStyle = active ? "rgba(255,79,129,0.12)" : "rgba(112,245,255,0.10)";
+    ctx.beginPath();
+    ctx.roundRect(sensor.x, sensor.y, sensor.w, sensor.h, 8);
+    ctx.fill();
+    ctx.strokeStyle = active ? "#ff4f81" : "#70f5ff";
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.roundRect(sensor.x + 1, sensor.y + 1, sensor.w - 2, sensor.h - 2, 7);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = active ? "#ff4f81" : "#70f5ff";
+    ctx.fillRect(sensor.x + 4, sensor.y + 4, sensor.w - 8, 3);
+    ctx.restore();
+  }
+
+  private drawModernHazards(ctx: CanvasRenderingContext2D, time: number): void {
+    const elapsed = this.levelElapsed(time);
+    const rollback = this.isRollbackActive(time);
+    for (const laser of this.level.laserGates) this.drawLaserRect(ctx, laser, elapsed, rollback);
+    for (const laser of this.level.sweepLasers) this.drawLaserRect(ctx, laser, elapsed, rollback);
+    for (const razor of this.level.razors) this.drawRazor(ctx, razor, time);
+    for (const crusher of this.level.crushers) this.drawCrusher(ctx, crusher);
+    for (const arc of this.level.teslaArcs) this.drawTeslaArc(ctx, arc, elapsed, rollback, time);
+    for (const vent of this.level.plasmaVents) this.drawPlasmaVent(ctx, vent, elapsed, rollback, time);
+  }
+
+  private drawLaserRect(ctx: CanvasRenderingContext2D, laser: TimedHazardRect, elapsed: number, rollback: boolean): void {
+    const active = !rollback && isTimedHazardActive(laser, elapsed);
+    const warning = !rollback && !active && isTimedHazardWarning(laser, elapsed);
+    const color = rollback ? "#58ffd4" : active ? "#ff4f81" : warning ? "#ffdc3f" : "#40517f";
+    ctx.save();
+    ctx.globalAlpha = active ? 1 : warning ? 0.75 : 0.32;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = active ? 18 : warning ? 8 : 0;
+    ctx.fillStyle = active ? "rgba(255,79,129,0.46)" : warning ? "rgba(255,220,63,0.22)" : "rgba(64,81,127,0.18)";
+    ctx.beginPath();
+    ctx.roundRect(laser.x, laser.y, laser.w, laser.h, Math.min(8, laser.w / 2, laser.h / 2));
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = active ? 4 : 2;
+    ctx.beginPath();
+    ctx.roundRect(laser.x + 1, laser.y + 1, laser.w - 2, laser.h - 2, Math.min(7, laser.w / 2, laser.h / 2));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawRazor(ctx: CanvasRenderingContext2D, razor: MovingTechState, time: number): void {
+    const cx = razor.x + razor.w / 2;
+    const cy = razor.y + razor.h / 2;
+    const r = Math.min(razor.w, razor.h) / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(time / 120 + (razor.phase ?? 0));
+    ctx.fillStyle = "#111827";
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#cde9ff";
+    for (let i = 0; i < 8; i += 1) {
+      ctx.rotate(Math.PI / 4);
+      ctx.beginPath();
+      ctx.moveTo(0, -r - 8);
+      ctx.lineTo(7, -r + 5);
+      ctx.lineTo(-7, -r + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = "#ff4f81";
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  private drawCrusher(ctx: CanvasRenderingContext2D, crusher: MovingTechState): void {
+    ctx.fillStyle = "#221b25";
+    ctx.beginPath();
+    ctx.roundRect(crusher.x, crusher.y, crusher.w, crusher.h, 5);
+    ctx.fill();
+    ctx.strokeStyle = "#ffdc3f";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(crusher.x + 1, crusher.y + 1, crusher.w - 2, crusher.h - 2, 4);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,79,129,0.45)";
+    for (let x = crusher.x + 5; x < crusher.x + crusher.w - 4; x += 12) {
+      ctx.fillRect(x, crusher.y + crusher.h - 10, 6, 10);
+    }
+  }
+
+  private drawTeslaArc(ctx: CanvasRenderingContext2D, arc: TeslaArc, elapsed: number, rollback: boolean, time: number): void {
+    const active = !rollback && isTimedHazardActive(arc, elapsed);
+    const warning = !rollback && !active && isTimedHazardWarning(arc, elapsed);
+    ctx.save();
+    ctx.strokeStyle = rollback ? "#58ffd4" : active ? "#70f5ff" : warning ? "#ffdc3f" : "#40517f";
+    ctx.globalAlpha = active ? 0.95 : warning ? 0.62 : 0.28;
+    ctx.lineWidth = active ? 5 : 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = active ? 16 : 4;
+    ctx.beginPath();
+    ctx.moveTo(arc.x1, arc.y1);
+    const wobble = active ? Math.sin(time / 55 + arc.x1) * 10 : 0;
+    ctx.lineTo((arc.x1 + arc.x2) / 2 + wobble, (arc.y1 + arc.y2) / 2 - wobble);
+    ctx.lineTo(arc.x2, arc.y2);
+    ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath(); ctx.arc(arc.x1, arc.y1, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(arc.x2, arc.y2, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  private drawPlasmaVent(ctx: CanvasRenderingContext2D, vent: PlasmaVent, elapsed: number, rollback: boolean, time: number): void {
+    const active = !rollback && isTimedHazardActive(vent, elapsed);
+    const warning = !rollback && !active && isTimedHazardWarning(vent, elapsed);
+    ctx.fillStyle = "#101827";
+    ctx.beginPath();
+    ctx.roundRect(vent.x, vent.y, vent.w, vent.h, 5);
+    ctx.fill();
+    ctx.strokeStyle = active ? "#ff4f81" : warning ? "#ffdc3f" : "#40517f";
+    ctx.strokeRect(vent.x + 1, vent.y + 1, vent.w - 2, vent.h - 2);
+    if (active || warning) {
+      const beam = plasmaBeamRect(vent);
+      ctx.save();
+      ctx.globalAlpha = active ? 0.55 + Math.sin(time / 90) * 0.14 : 0.22;
+      ctx.shadowColor = active ? "#ff4f81" : "#ffdc3f";
+      ctx.shadowBlur = active ? 18 : 8;
+      ctx.fillStyle = active ? "#ff4f81" : "#ffdc3f";
+      ctx.beginPath();
+      ctx.roundRect(beam.x, beam.y, beam.w, beam.h, Math.min(8, beam.w / 2, beam.h / 2));
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   private drawCoin(ctx: CanvasRenderingContext2D, coin: CoinState, time: number): void {
     const bob = Math.sin(time / 170 + coin.x) * 3;
+    const shine = 0.5 + Math.sin(time / 130 + coin.y) * 0.35;
+    ctx.save();
+    ctx.shadowColor = "#ffdc3f";
+    ctx.shadowBlur = 10 + shine * 7;
     ctx.fillStyle = "#593b00";
-    ctx.fillRect(coin.x - 8, coin.y + bob + 8, 16, 4);
-    ctx.fillStyle = "#ffdc3f";
     ctx.beginPath();
-    ctx.arc(coin.x, coin.y + bob, coin.r, 0, Math.PI * 2);
+    ctx.ellipse(coin.x, coin.y + bob + 10, 9, 3, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#fff39b";
-    ctx.fillRect(coin.x - 3, coin.y + bob - 6, 5, 12);
+    const gradient = ctx.createRadialGradient(coin.x - 3, coin.y + bob - 4, 2, coin.x, coin.y + bob, coin.r + 3);
+    gradient.addColorStop(0, "#fff9bd");
+    gradient.addColorStop(0.45, "#ffdc3f");
+    gradient.addColorStop(1, "#ff9a3d");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(coin.x, coin.y + bob, coin.r * 0.82, coin.r, Math.sin(time / 260) * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(coin.x - 2, coin.y + bob - 7);
+    ctx.lineTo(coin.x + 2, coin.y + bob + 6);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawRollbackToken(ctx: CanvasRenderingContext2D, token: RollbackTokenState, time: number): void {
@@ -1279,31 +2052,50 @@ export class Game {
   }
 
   private drawSpike(ctx: CanvasRenderingContext2D, spike: SpikeState): void {
+    ctx.save();
+    ctx.shadowColor = "#ff4f81";
+    ctx.shadowBlur = this.level.chapter === "production_floor" ? 9 : 4;
     ctx.fillStyle = "#311522";
     ctx.beginPath();
     ctx.moveTo(spike.x, spike.y + spike.h);
-    ctx.lineTo(spike.x + spike.w / 2, spike.y);
-    ctx.lineTo(spike.x + spike.w, spike.y + spike.h);
+    ctx.quadraticCurveTo(spike.x + spike.w * 0.34, spike.y + spike.h * 0.28, spike.x + spike.w / 2, spike.y);
+    ctx.quadraticCurveTo(spike.x + spike.w * 0.66, spike.y + spike.h * 0.28, spike.x + spike.w, spike.y + spike.h);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = "#ff4f81";
     ctx.beginPath();
     ctx.moveTo(spike.x + 5, spike.y + spike.h - 2);
-    ctx.lineTo(spike.x + spike.w / 2, spike.y + 8);
-    ctx.lineTo(spike.x + spike.w - 5, spike.y + spike.h - 2);
+    ctx.quadraticCurveTo(spike.x + spike.w * 0.42, spike.y + spike.h * 0.38, spike.x + spike.w / 2, spike.y + 8);
+    ctx.quadraticCurveTo(spike.x + spike.w * 0.62, spike.y + spike.h * 0.38, spike.x + spike.w - 5, spike.y + spike.h - 2);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
 
   private drawExit(ctx: CanvasRenderingContext2D, exit: Rect, time: number): void {
     const pulse = 0.5 + Math.sin(time / 180) * 0.5;
+    ctx.save();
+    ctx.shadowColor = "#70f5ff";
+    ctx.shadowBlur = 14 + pulse * 10;
     ctx.fillStyle = "#071221";
-    ctx.fillRect(exit.x, exit.y, exit.w, exit.h);
+    ctx.beginPath();
+    ctx.roundRect(exit.x, exit.y, exit.w, exit.h, 10);
+    ctx.fill();
     ctx.strokeStyle = "#70f5ff";
     ctx.lineWidth = 4;
-    ctx.strokeRect(exit.x + 2, exit.y + 2, exit.w - 4, exit.h - 4);
-    ctx.fillStyle = `rgba(112,245,255,${0.25 + pulse * 0.25})`;
-    ctx.fillRect(exit.x + 8, exit.y + 8, exit.w - 16, exit.h - 16);
+    ctx.beginPath();
+    ctx.roundRect(exit.x + 2, exit.y + 2, exit.w - 4, exit.h - 4, 8);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(112,245,255,${0.22 + pulse * 0.28})`;
+    ctx.beginPath();
+    ctx.ellipse(exit.x + exit.w / 2, exit.y + exit.h / 2, exit.w * 0.28 + pulse * 4, exit.h * 0.36 + pulse * 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${0.22 + pulse * 0.34})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(exit.x + exit.w / 2, exit.y + exit.h / 2, exit.w * 0.18, exit.h * 0.28, time / 800, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
     const fee = this.level.exit.fee ?? 0;
     if (fee > 0 && !canUseExit(this.levelCoins, fee, this.isRollbackActive(time))) {
@@ -1324,15 +2116,34 @@ export class Game {
     }
 
     ctx.fillStyle = "#c73d58";
-    ctx.fillRect(p.x - 8, p.y + 12, 12, 18);
-    ctx.fillStyle = "#1e8dff";
-    ctx.fillRect(p.x + 5, p.y + 8, p.w - 6, p.h - 6);
-    ctx.fillStyle = "#63d7ff";
-    ctx.fillRect(p.x + 9, p.y + 12, p.w - 14, 10);
+    ctx.beginPath();
+    ctx.moveTo(p.x + 4, p.y + 13);
+    ctx.quadraticCurveTo(p.x - 14, p.y + 22, p.x + 2, p.y + 31);
+    ctx.lineTo(p.x + 8, p.y + 25);
+    ctx.closePath();
+    ctx.fill();
+    const suit = ctx.createLinearGradient(p.x, p.y + 8, p.x, p.y + p.h);
+    suit.addColorStop(0, "#29a3ff");
+    suit.addColorStop(1, "#0b5ec8");
+    ctx.fillStyle = suit;
+    ctx.beginPath();
+    ctx.roundRect(p.x + 5, p.y + 8, p.w - 6, p.h - 6, 7);
+    ctx.fill();
+    ctx.fillStyle = "rgba(112,245,255,0.72)";
+    ctx.beginPath();
+    ctx.roundRect(p.x + 9, p.y + 12, p.w - 14, 10, 4);
+    ctx.fill();
     ctx.fillStyle = "#ffd89b";
-    ctx.fillRect(p.x + 8, p.y + 2, p.w - 9, 14);
+    ctx.beginPath();
+    ctx.roundRect(p.x + 8, p.y + 2, p.w - 9, 14, 6);
+    ctx.fill();
     ctx.fillStyle = "#3c1c28";
-    ctx.fillRect(p.x + 6, p.y, p.w - 5, 7);
+    ctx.beginPath();
+    ctx.moveTo(p.x + 6, p.y + 7);
+    ctx.quadraticCurveTo(p.x + 12, p.y - 4, p.x + p.w + 2, p.y + 3);
+    ctx.lineTo(p.x + p.w - 3, p.y + 8);
+    ctx.lineTo(p.x + 6, p.y + 7);
+    ctx.fill();
     ctx.fillStyle = "#111827";
     if (blink) {
       ctx.fillRect(p.x + 14, p.y + 8, 3, 3);
@@ -1351,12 +2162,6 @@ export class Game {
     const runPauseAdjust = this.runPauseStart > 0 ? time - this.runPauseStart : 0;
     const runElapsed = Math.max(0, (time - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000);
 
-    // Mini dev avatar in HUD (levels 4+) — small character with hard hat
-    if (this.levelIndex >= 3) {
-      const blink = Math.floor(time / 600) % 6 !== 0;
-      this.drawDevChar(ctx, 446, 82, 0.72, blink);
-    }
-
     drawPanel(ctx, 18, 18, 430, 104, "rgba(9, 13, 31, 0.82)", "#53d7ff");
     drawText(ctx, truncateText(`${this.level.title} - ${patch.headline}`, 32), 34, 44, 20, "#ffffff", "bold");
     drawWrappedText(ctx, patch.note, 34, 68, 386, 16, "#cde9ff");
@@ -1366,7 +2171,7 @@ export class Game {
     drawText(ctx, this.run.buildName, 486, 43, 18, "#fff5d6", "bold");
     drawText(
       ctx,
-      `${this.run.source.toUpperCase()} RUN ${this.run.runId}`,
+      `${this.run.source === "fallback" ? "DETERMINISTIC FALLBACK" : "OPENAI"} RUN ${this.run.runId}`,
       486,
       64,
       12,
@@ -1394,10 +2199,10 @@ export class Game {
       ctx.fillStyle = dotColor;
       ctx.fillRect(trainX + i * (dotW + dotGap), trainY - 7, dotW, 7);
     }
-    const reportCount = this.totalReports + Number(this.bonusChallengeActive && Boolean(this.level.bugReport?.collected));
+    const starCount = levels.filter((level) => this.levelProgress[level.id]?.challengeCompleted).length;
     drawText(
       ctx,
-      this.bonusChallengeActive ? `${reportCount}/${levels.length} bugs` : "bonus locked",
+      this.bonusChallengeActive ? `${starCount}/${levels.length} stars` : "challenge locked",
       684,
       64,
       13,
@@ -1409,8 +2214,14 @@ export class Game {
     drawText(ctx, `Level ${elapsed.toFixed(1)}s`, 18, 529, 14, "#ffffff", "bold");
     drawText(ctx, `Run ${runElapsed.toFixed(1)}s`, 174, 529, 14, "#ffffff", "bold");
     drawText(ctx, this.audio.muted ? "Muted" : "Sound on", 340, 529, 13, this.audio.muted ? "#ff9aa7" : "#87ffc4", "bold");
+    if (this.hasDoubleJumpUnlocked()) {
+      drawText(ctx, "Double jump", 500, 529, 13, "#70f5ff", "bold");
+      const used = this.player.airJumpsUsed > 0 || this.secondJumpUsed && !this.player.grounded;
+      drawJumpPip(ctx, 604, 518, true);
+      drawJumpPip(ctx, 620, 518, !used && !this.player.grounded ? true : this.player.grounded);
+    }
     if (this.playerName) {
-      drawText(ctx, this.playerName, 500, 529, 13, "#fff5d6");
+      drawText(ctx, this.playerName, this.hasDoubleJumpUnlocked() ? 654 : 500, 529, 13, "#fff5d6");
     }
 
     if (this.isRollbackActive(time)) {
@@ -1422,22 +2233,32 @@ export class Game {
   private drawTitle(): void {
     const ctx = this.ctx;
     drawPanel(ctx, 112, 106, 736, 330, "rgba(7, 10, 26, 0.9)", "#ffdc3f");
-    drawText(ctx, "ESCAPE THE PATCH NOTES", 152, 176, 44, "#ffffff", "bold");
-    drawText(ctx, "A platformer slowly ruined by updates.", 162, 214, 20, "#87ffc4", "bold");
-    drawText(ctx, this.run.finale.headline, 164, 270, 17, "#fff5d6", "bold");
-    drawWrappedText(ctx, this.run.finale.note, 164, 296, 610, 17, "#cde9ff");
+    this.drawDevChar(ctx, 758, 252, 2.35, true, "confident");
+    drawText(ctx, "ESCAPE THE PATCH NOTES", 152, 168, 42, "#ffffff", "bold");
+    drawText(ctx, "Chapter 2: The Production Floor is live.", 162, 204, 20, "#70f5ff", "bold");
+    drawText(ctx, "A platformer slowly ruined by updates.", 162, 232, 17, "#87ffc4", "bold");
+    drawText(ctx, this.run.finale.headline, 164, 274, 17, "#fff5d6", "bold");
+    drawWrappedText(ctx, this.run.finale.note, 164, 300, 520, 17, "#cde9ff");
     if (this.bestScore > 0) {
-      drawText(ctx, `Best release score ${this.bestScore}`, 164, 342, 16, "#ffdc3f", "bold");
+      drawText(ctx, `Best release score ${this.bestScore}`, 164, 340, 16, "#ffdc3f", "bold");
     }
-    drawTextPill(ctx, "ENTER RELEASE BOARD", 480, 378, "#111827", "#ffdc3f");
-    this.hot(310, 358, 340, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
-    drawText(ctx, "Space quick-starts · S settings · T touch controls", 186, 420, 13, "#cde9ff", "bold");
+    drawTextPill(ctx, "CHOOSE LEVEL", 360, 380, "#111827", "#ffdc3f");
+    this.hot(190, 360, 340, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
+    drawTextPill(ctx, "START HIGHLIGHTS", 640, 380, "#111827", "#70f5ff");
+    this.hot(522, 360, 236, 34, () => {
+      this.startHighlightRun();
+      this.audio.play("start");
+    });
+    if (this.run.source === "fallback") {
+      drawTextPill(ctx, "DETERMINISTIC FALLBACK RUN", 384, 342, "#172033", "#ffdc3f");
+    }
+    drawText(ctx, "Space quick-starts · S settings · B choose level · T touch controls", 164, 420, 13, "#cde9ff", "bold");
   }
 
   private drawReleaseBoard(): void {
     const ctx = this.ctx;
     const completed = levels.filter((level) => this.levelProgress[level.id]?.completed).length;
-    const reports = levels.filter((level) => this.levelProgress[level.id]?.reportCollected).length;
+    const stars = levels.filter((level) => this.levelProgress[level.id]?.challengeCompleted).length;
     const golds = levels.filter((level) => this.levelProgress[level.id]?.bestMedal === "gold").length;
     const selected = levels[this.boardSelection] ?? levels[0];
     const selectedPatch = this.run.levels[this.boardSelection] ?? this.run.levels[0];
@@ -1445,45 +2266,65 @@ export class Game {
     const range = boardPageRange(this.boardSelection, levels.length);
     const pageFirstPatch = this.run.levels[range.start] ?? selectedPatch;
     const pageLastPatch = this.run.levels[range.end] ?? selectedPatch;
+    const chapterOne = range.start < CHAPTER_TWO_START_INDEX;
 
     drawPanel(ctx, 36, 30, 888, 488, "rgba(7, 10, 26, 0.92)", "#70f5ff");
-    drawText(ctx, "RELEASE BOARD", 68, 78, 34, "#ffffff", "bold");
+    drawText(ctx, "CHOOSE LEVEL", 68, 78, 34, "#ffffff", "bold");
     drawPanel(ctx, 796, 54, 106, 28, "rgba(0,0,0,0.4)", "#70f5ff");
     drawText(ctx, "← Title", 808, 73, 13, "#70f5ff", "bold");
     this.hot(796, 54, 106, 28, () => this.setMode("title"));
     drawText(ctx, `${completed}/${levels.length} shipped`, 532, 62, 15, "#87ffc4", "bold");
-    drawText(ctx, `${reports}/${levels.length} reports`, 532, 84, 15, "#fff5d6", "bold");
+    drawText(ctx, `${stars}/${levels.length} stars`, 532, 84, 15, "#fff5d6", "bold");
     drawText(ctx, `${golds}/${levels.length} gold`, 700, 62, 15, "#ffdc3f", "bold");
     drawText(ctx, `Best ${this.bestScore || "--"}`, 724, 84, 15, "#cde9ff", "bold");
-    drawText(ctx, `Slide ${range.page + 1}/${range.totalPages}: Patch ${pageFirstPatch.version}-${pageLastPatch.version}`, 68, 108, 16, "#fff5d6", "bold");
-    drawText(ctx, "Arrows select   Q/E change slide   Enter deploy selected patch   Esc title", 68, 128, 12, "#9fc7ff", "bold");
+    drawText(ctx, `${chapterLabelForLevel(levels[range.start])}  ·  Page ${range.page + 1}/${range.totalPages}: Patch ${pageFirstPatch.version}-${pageLastPatch.version}`, 68, 108, 16, "#fff5d6", "bold");
+    drawText(ctx, "Arrows select   Q/E chapter   H highlights   Enter deploy selected patch   Esc title", 68, 128, 12, "#9fc7ff", "bold");
 
     const canPrev = range.page > 0;
     const canNext = range.page < range.totalPages - 1;
-    drawPanel(ctx, 54, 250, 44, 74, "rgba(0,0,0,0.32)", canPrev ? "#70f5ff" : "#40517f");
-    drawText(ctx, "<", 70, 296, 28, canPrev ? "#70f5ff" : "#40517f", "bold");
-    if (canPrev) {
-      this.hot(54, 250, 44, 74, () => {
-        this.boardSelection = previousBoardPageStart(this.boardSelection, levels.length);
-        this.setStatus();
-      });
-    }
-    drawPanel(ctx, 862, 250, 44, 74, "rgba(0,0,0,0.32)", canNext ? "#70f5ff" : "#40517f");
-    drawText(ctx, ">", 878, 296, 28, canNext ? "#70f5ff" : "#40517f", "bold");
-    if (canNext) {
-      this.hot(862, 250, 44, 74, () => {
-        this.boardSelection = nextBoardPageStart(this.boardSelection, levels.length);
-        this.setStatus();
-      });
+    if (chapterOne) {
+      drawPanel(ctx, 812, 102, 38, 30, "rgba(0,0,0,0.32)", canPrev ? "#70f5ff" : "#40517f");
+      drawText(ctx, "<", 826, 123, 17, canPrev ? "#70f5ff" : "#40517f", "bold");
+      drawPanel(ctx, 858, 102, 38, 30, "rgba(0,0,0,0.32)", canNext ? "#70f5ff" : "#40517f");
+      drawText(ctx, ">", 872, 123, 17, canNext ? "#70f5ff" : "#40517f", "bold");
+      if (canPrev) {
+        this.hot(812, 102, 38, 30, () => {
+          this.boardSelection = previousBoardPageStart(this.boardSelection, levels.length);
+          this.setStatus();
+        });
+      }
+      if (canNext) {
+        this.hot(858, 102, 38, 30, () => {
+          this.boardSelection = nextBoardPageStart(this.boardSelection, levels.length);
+          this.setStatus();
+        });
+      }
+    } else {
+      drawPanel(ctx, 54, 250, 44, 74, "rgba(0,0,0,0.32)", canPrev ? "#70f5ff" : "#40517f");
+      drawText(ctx, "<", 70, 296, 28, canPrev ? "#70f5ff" : "#40517f", "bold");
+      if (canPrev) {
+        this.hot(54, 250, 44, 74, () => {
+          this.boardSelection = previousBoardPageStart(this.boardSelection, levels.length);
+          this.setStatus();
+        });
+      }
+      drawPanel(ctx, 862, 250, 44, 74, "rgba(0,0,0,0.32)", canNext ? "#70f5ff" : "#40517f");
+      drawText(ctx, ">", 878, 296, 28, canNext ? "#70f5ff" : "#40517f", "bold");
+      if (canNext) {
+        this.hot(862, 250, 44, 74, () => {
+          this.boardSelection = nextBoardPageStart(this.boardSelection, levels.length);
+          this.setStatus();
+        });
+      }
     }
 
-    const columns = 2;
-    const cardW = 356;
-    const cardH = 58;
-    const startX = 118;
-    const startY = 146;
-    const gapX = 20;
-    const gapY = 8;
+    const columns = chapterOne ? 5 : 2;
+    const cardW = chapterOne ? 158 : 356;
+    const cardH = chapterOne ? 44 : 58;
+    const startX = chapterOne ? 80 : 118;
+    const startY = chapterOne ? 146 : 146;
+    const gapX = chapterOne ? 10 : 20;
+    const gapY = chapterOne ? 8 : 8;
 
     for (let index = range.start; index <= range.end; index += 1) {
       const level = levels[index];
@@ -1515,7 +2356,7 @@ export class Game {
     drawText(
       ctx,
       selectedProgress?.completed
-        ? `Selected Patch ${selectedPatch.version}: replay challenge unlocked. File the bug report for better medals.`
+        ? `Selected Patch ${selectedPatch.version}: Challenge Patch unlocked. ${selected.challenge?.label ?? "File the hidden bug report."}`
         : `Selected Patch ${selectedPatch.version}: first pass objective is only to reach the exit.`,
       84,
       499,
@@ -1537,77 +2378,196 @@ export class Game {
     selected: boolean,
   ): void {
     const completed = Boolean(progress?.completed);
+    const starred = Boolean(progress?.challengeCompleted);
     const stroke = selected ? "#ffdc3f" : completed ? "#87ffc4" : "#40517f";
     const fill = selected ? "rgba(32, 31, 65, 0.96)" : "rgba(10, 15, 36, 0.86)";
 
     drawPanel(ctx, x, y, w, h, fill, stroke);
+    if (h <= 48) {
+      const status = starred ? "STAR" : completed ? "CLEAR" : "OPEN";
+      drawText(ctx, `${levelId}. ${patch.version}`, x + 8, y + 17, 13, selected ? "#ffdc3f" : "#ffffff", "bold");
+      drawText(ctx, status, x + 8, y + 35, 11, starred ? "#ffdc3f" : completed ? "#87ffc4" : "#ff9aa7", "bold");
+      drawText(ctx, truncateText(releaseBoardLabel(patch.modifier), 16), x + 58, y + 35, 10, "#cde9ff", "bold");
+      drawText(ctx, progress?.bestMedal ? progress.bestMedal.slice(0, 3).toUpperCase() : "--", x + w - 34, y + 17, 10, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
+      return;
+    }
+
     drawText(ctx, `${levelId}. ${patch.version}`, x + 10, y + 19, 14, selected ? "#ffdc3f" : "#ffffff", "bold");
     drawText(ctx, releaseBoardLabel(patch.modifier), x + 78, y + 19, 12, "#cde9ff", "bold");
-    drawText(ctx, completed ? "CLEARED" : "UNSHIPPED", x + 10, y + 37, 12, completed ? "#87ffc4" : "#ff9aa7", "bold");
-    drawText(ctx, completed ? "BONUS READY" : "BONUS LOCKED", x + 90, y + 37, 12, completed ? "#ff9aa7" : "#9fc7ff", "bold");
+    drawText(ctx, starred ? "STARRED" : completed ? "CLEARED" : "UNSHIPPED", x + 10, y + 37, 12, starred ? "#ffdc3f" : completed ? "#87ffc4" : "#ff9aa7", "bold");
+    drawText(ctx, starred ? "CHALLENGE DONE" : completed ? "CHALLENGE READY" : "CHALLENGE LOCKED", x + 90, y + 37, 12, starred ? "#ffdc3f" : completed ? "#ff9aa7" : "#9fc7ff", "bold");
     drawText(ctx, `${progress?.bestMedal?.toUpperCase() ?? "--"}`, x + 10, y + 53, 11, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
-    drawText(ctx, `Bug ${progress?.reportCollected ? "FILED" : completed ? "open" : "--"}`, x + 68, y + 53, 11, progress?.reportCollected ? "#fff5d6" : "#7c8dbb", "bold");
+    drawText(ctx, `Star ${starred ? "YES" : completed ? "open" : "--"}`, x + 68, y + 53, 11, starred ? "#fff5d6" : "#7c8dbb", "bold");
     drawText(ctx, `${formatTime(progress?.bestTime)}`, x + 180, y + 53, 11, "#cde9ff", "bold");
   }
 
-  // Pixel-art developer character centered at (cx, cy), scale factor s
-  private drawDevChar(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, blink: boolean): void {
+  // Stylized engineer portrait centered at (cx, cy), scale factor s.
+  private drawDevChar(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, blink: boolean, mood: EngineerMood = "confident"): void {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // Body (torso) — hoodie
-    ctx.fillStyle = "#4a6fa5";
-    ctx.fillRect(-10 * s, -18 * s, 20 * s, 22 * s);
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 8 * s;
+    ctx.shadowOffsetY = 3 * s;
 
-    // Arms
-    ctx.fillStyle = "#4a6fa5";
-    ctx.fillRect(-16 * s, -16 * s, 6 * s, 14 * s);
-    ctx.fillRect( 10 * s, -16 * s, 6 * s, 14 * s);
+    const jacket = ctx.createLinearGradient(0, -10 * s, 0, 34 * s);
+    jacket.addColorStop(0, "#2f9be8");
+    jacket.addColorStop(1, "#152f4a");
+    ctx.fillStyle = jacket;
+    ctx.beginPath();
+    ctx.moveTo(-29 * s, 31 * s);
+    ctx.quadraticCurveTo(-25 * s, -12 * s, -7 * s, -14 * s);
+    ctx.lineTo(7 * s, -14 * s);
+    ctx.quadraticCurveTo(25 * s, -12 * s, 29 * s, 31 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
 
-    // Left hand holds coffee cup
-    ctx.fillStyle = "#e8c87a";
-    ctx.fillRect(-17 * s, -4 * s, 5 * s, 7 * s);
-    ctx.fillStyle = "#7c3f22";
-    ctx.fillRect(-16 * s, -3 * s, 3 * s, 5 * s);
-
-    // Legs
-    ctx.fillStyle = "#2a3a5a";
-    ctx.fillRect(-9 * s, 4 * s, 7 * s, 12 * s);
-    ctx.fillRect( 2 * s, 4 * s, 7 * s, 12 * s);
-
-    // Shoes
     ctx.fillStyle = "#111827";
-    ctx.fillRect(-10 * s, 14 * s, 9 * s, 4 * s);
-    ctx.fillRect( 1 * s, 14 * s, 9 * s, 4 * s);
+    ctx.beginPath();
+    ctx.roundRect(-7 * s, -10 * s, 14 * s, 42 * s, 4 * s);
+    ctx.fill();
+    ctx.fillStyle = "#70f5ff";
+    ctx.beginPath();
+    ctx.roundRect(-5 * s, -7 * s, 10 * s, 20 * s, 3 * s);
+    ctx.fill();
 
-    // Head
-    ctx.fillStyle = "#f4c68a";
-    ctx.fillRect(-9 * s, -36 * s, 18 * s, 18 * s);
+    ctx.fillStyle = "#d49362";
+    ctx.beginPath();
+    ctx.roundRect(-8 * s, -25 * s, 16 * s, 17 * s, 5 * s);
+    ctx.fill();
 
-    // Hard hat
-    ctx.fillStyle = "#ffdc3f";
-    ctx.fillRect(-10 * s, -38 * s, 20 * s, 5 * s);
-    ctx.fillRect(-6 * s, -43 * s, 12 * s, 6 * s);
+    ctx.fillStyle = "#d28a62";
+    ctx.beginPath();
+    ctx.ellipse(-17 * s, -38 * s, 4 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(17 * s, -38 * s, 4 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
 
-    // Eyes
-    ctx.fillStyle = "#111827";
+    const skin = ctx.createLinearGradient(-16 * s, -58 * s, 16 * s, -20 * s);
+    skin.addColorStop(0, "#ffd9ac");
+    skin.addColorStop(0.62, "#e79a67");
+    skin.addColorStop(1, "#bc704f");
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(0, -39 * s, 18 * s, 22 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const hair = ctx.createLinearGradient(-18 * s, -63 * s, 20 * s, -42 * s);
+    hair.addColorStop(0, "#18101a");
+    hair.addColorStop(1, "#422334");
+    ctx.fillStyle = hair;
+    ctx.beginPath();
+    ctx.moveTo(-18 * s, -45 * s);
+    ctx.bezierCurveTo(-19 * s, -61 * s, -6 * s, -68 * s, 10 * s, -63 * s);
+    ctx.bezierCurveTo(20 * s, -59 * s, 24 * s, -50 * s, 17 * s, -42 * s);
+    ctx.bezierCurveTo(7 * s, -47 * s, -5 * s, -48 * s, -18 * s, -45 * s);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+    ctx.lineWidth = 1.4 * s;
+    ctx.beginPath();
+    ctx.moveTo(-7 * s, -59 * s);
+    ctx.quadraticCurveTo(1 * s, -55 * s, 13 * s, -56 * s);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#101827";
+    ctx.lineWidth = 1.8 * s;
+    ctx.beginPath();
+    ctx.roundRect(-14 * s, -42 * s, 11 * s, 8 * s, 3.5 * s);
+    ctx.roundRect(3 * s, -42 * s, 11 * s, 8 * s, 3.5 * s);
+    ctx.moveTo(-3 * s, -38 * s);
+    ctx.lineTo(3 * s, -38 * s);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(112,245,255,0.18)";
+    ctx.beginPath();
+    ctx.roundRect(-13 * s, -41 * s, 9 * s, 6 * s, 3 * s);
+    ctx.roundRect(4 * s, -41 * s, 9 * s, 6 * s, 3 * s);
+    ctx.fill();
+
+    ctx.fillStyle = "#101827";
     if (blink) {
-      ctx.fillRect(-6 * s, -28 * s, 4 * s, 1 * s);
-      ctx.fillRect( 2 * s, -28 * s, 4 * s, 1 * s);
+      ctx.fillRect(-10 * s, -38 * s, 6 * s, 1.4 * s);
+      ctx.fillRect(5 * s, -38 * s, 6 * s, 1.4 * s);
     } else {
-      ctx.fillRect(-6 * s, -30 * s, 4 * s, 4 * s);
-      ctx.fillRect( 2 * s, -30 * s, 4 * s, 4 * s);
-      // pupils
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(-5 * s, -29 * s, 2 * s, 2 * s);
-      ctx.fillRect( 3 * s, -29 * s, 2 * s, 2 * s);
+      ctx.beginPath(); ctx.arc(-8 * s, -38 * s, 2.1 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(8 * s, -38 * s, 2.1 * s, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Mouth — slight smile
-    ctx.fillStyle = "#c47a4a";
-    ctx.fillRect(-4 * s, -22 * s, 8 * s, 2 * s);
-    ctx.fillRect(-5 * s, -23 * s, 2 * s, 2 * s);
-    ctx.fillRect( 3 * s, -23 * s, 2 * s, 2 * s);
+    ctx.fillStyle = "#70f5ff";
+    ctx.beginPath();
+    ctx.roundRect(16 * s, -42 * s, 4 * s, 13 * s, 2 * s);
+    ctx.fill();
+    ctx.strokeStyle = "#70f5ff";
+    ctx.lineWidth = 1 * s;
+    ctx.beginPath();
+    ctx.moveTo(18 * s, -30 * s);
+    ctx.quadraticCurveTo(14 * s, -26 * s, 8 * s, -25 * s);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#2b1720";
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    if (mood === "worried") {
+      ctx.moveTo(-13 * s, -48 * s);
+      ctx.lineTo(-4 * s, -45 * s);
+      ctx.moveTo(4 * s, -45 * s);
+      ctx.lineTo(13 * s, -48 * s);
+    } else if (mood === "exhausted") {
+      ctx.moveTo(-12 * s, -45 * s);
+      ctx.lineTo(-4 * s, -45 * s);
+      ctx.moveTo(4 * s, -45 * s);
+      ctx.lineTo(13 * s, -45 * s);
+    } else if (mood === "proud") {
+      ctx.moveTo(-12 * s, -48 * s);
+      ctx.lineTo(-4 * s, -49 * s);
+      ctx.moveTo(4 * s, -49 * s);
+      ctx.lineTo(13 * s, -47 * s);
+    } else {
+      ctx.moveTo(-12 * s, -46 * s);
+      ctx.lineTo(-4 * s, -48 * s);
+      ctx.moveTo(4 * s, -48 * s);
+      ctx.lineTo(13 * s, -45 * s);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(125,63,52,0.58)";
+    ctx.lineWidth = 1.1 * s;
+    ctx.beginPath();
+    ctx.moveTo(1 * s, -36 * s);
+    ctx.quadraticCurveTo(3 * s, -33 * s, 1 * s, -31 * s);
+    ctx.stroke();
+
+    ctx.strokeStyle = "#7d3f34";
+    ctx.lineWidth = 1.4 * s;
+    ctx.beginPath();
+    if (mood === "worried") {
+      ctx.moveTo(-7 * s, -25 * s);
+      ctx.quadraticCurveTo(0, -30 * s, 8 * s, -25 * s);
+    } else if (mood === "exhausted") {
+      ctx.moveTo(-6 * s, -26 * s);
+      ctx.lineTo(8 * s, -26 * s);
+    } else if (mood === "proud") {
+      ctx.moveTo(-8 * s, -29 * s);
+      ctx.quadraticCurveTo(0, -21 * s, 11 * s, -29 * s);
+    } else {
+      ctx.moveTo(-7 * s, -28 * s);
+      ctx.quadraticCurveTo(0, -23 * s, 9 * s, -28 * s);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = "#0f172a";
+    ctx.beginPath();
+    ctx.roundRect(9 * s, -2 * s, 17 * s, 22 * s, 3 * s);
+    ctx.fill();
+    ctx.fillStyle = "#70f5ff";
+    ctx.fillRect(12 * s, 2 * s, 11 * s, 2 * s);
+    ctx.fillRect(12 * s, 8 * s, 7 * s, 2 * s);
+    ctx.fillStyle = "#f0b676";
+    ctx.beginPath();
+    ctx.roundRect(-28 * s, -2 * s, 9 * s, 15 * s, 3 * s);
+    ctx.fill();
+    ctx.fillStyle = "#3d241d";
+    ctx.fillRect(-26 * s, 1 * s, 5 * s, 10 * s);
 
     ctx.restore();
   }
@@ -1654,7 +2614,7 @@ export class Game {
 
     // Dev character — right side of panel, vertically centered
     const charY = panelTop + panelH - 30;
-    this.drawDevChar(ctx, 740, charY, 2.2, blink);
+    this.drawDevChar(ctx, 740, charY, 2.2, blink, engineerMoodForPatch(patch.severity));
 
     // Speech bubble — sized to content
     const by = panelTop + 20;
@@ -1699,23 +2659,77 @@ export class Game {
     ctx.globalAlpha = 1;
   }
 
+  private drawChapterIntro(ctx: CanvasRenderingContext2D, time: number): void {
+    const sweep = (time / 18) % VIEW_W;
+    ctx.fillStyle = "rgba(3,7,18,0.94)";
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "rgba(112,245,255,0.11)";
+    for (let x = -80; x < VIEW_W + 120; x += 88) {
+      ctx.fillRect(x + ((time / 40) % 88), 0, 2, VIEW_H);
+    }
+    ctx.fillStyle = "rgba(255,79,129,0.14)";
+    ctx.fillRect(sweep - 40, 0, 8, VIEW_H);
+    ctx.fillStyle = "rgba(255,220,63,0.12)";
+    ctx.fillRect(sweep, 0, 3, VIEW_H);
+    ctx.restore();
+
+    drawPanel(ctx, 92, 70, 776, 394, "rgba(7, 14, 30, 0.94)", "#70f5ff");
+    drawText(ctx, "CHAPTER 2 UNLOCKED", 140, 128, 20, "#70f5ff", "bold");
+    drawText(ctx, "THE PRODUCTION FLOOR", 140, 178, 38, "#ffffff", "bold");
+    drawWrappedText(
+      ctx,
+      "The engineer moved the build into a sleek server facility. Everything is faster, smoother, brighter, and much more interested in deleting you.",
+      140,
+      216,
+      480,
+      20,
+      "#cde9ff",
+      17,
+    );
+
+    const cards = [
+      ["LASER GATES", "warning blink before lethal cycles"],
+      ["RAZOR RAILS", "moving blades with clean arcade hitboxes"],
+      ["DOUBLE JUMP", "unlocks after Patch 4.2"],
+    ];
+    cards.forEach(([title, body], i) => {
+      const x = 140 + i * 168;
+      drawPanel(ctx, x, 306, 148, 78, "rgba(12, 22, 42, 0.88)", i === 2 ? "#ffdc3f" : "#58ffd4");
+      drawText(ctx, title, x + 12, 330, 13, i === 2 ? "#ffdc3f" : "#70f5ff", "bold");
+      drawWrappedText(ctx, body, x + 12, 354, 124, 15, "#fff5d6", 12);
+    });
+
+    const blink = Math.floor(time / 460) % 5 !== 0;
+    this.drawDevChar(ctx, 736, 338, 2.05, blink, "worried");
+    drawTextPill(ctx, "ENTER TO DEPLOY", 480, 426, "#111827", "#70f5ff");
+    this.hot(350, 406, 260, 34, () => this.advanceChapterIntro());
+  }
+
   private drawPatchIntro(): void {
     const ctx = this.ctx;
     const patch = this.currentPatch();
     drawPanel(ctx, 132, 116, 696, 300, "rgba(7, 10, 26, 0.92)", severityColor(patch.severity));
+    const scanX = 132 + ((performance.now() / 12) % 696);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    ctx.fillRect(scanX, 118, 4, 296);
     drawText(ctx, `PATCH ${patch.version}`, 174, 168, 24, severityColor(patch.severity), "bold");
     drawText(ctx, patch.headline, 174, 216, 33, "#ffffff", "bold");
-    drawWrappedText(ctx, patch.note, 176, 258, 590, 18, "#cde9ff");
+    drawWrappedText(ctx, patch.note, 176, 258, 500, 18, "#cde9ff");
     drawText(ctx, patch.joke, 176, 330, 17, "#fff5d6", "bold");
     drawText(
       ctx,
-      this.bonusChallengeActive ? "Replay objective: file the bug report before shipping." : "First pass objective: reach the exit.",
+      this.bonusChallengeActive ? truncateText(`Challenge Patch: ${this.challengeLabel()}`, 68) : "First pass objective: reach the exit.",
       176,
       362,
       16,
       this.bonusChallengeActive ? "#ff9aa7" : "#87ffc4",
       "bold",
     );
+    const blink = Math.floor(performance.now() / 500) % 5 !== 0;
+    this.drawDevChar(ctx, 746, 334, 1.25, blink, engineerMoodForPatch(patch.severity));
     drawTextPill(ctx, "ENTER TO SHIP", 480, 386, "#111827", severityColor(patch.severity));
     this.hot(350, 366, 260, 34, () => this.startPlaying(performance.now()));
   }
@@ -1742,7 +2756,7 @@ export class Game {
 
     // Dev character on the right side of the panel
     const blink = Math.floor(performance.now() / 500) % 3 !== 0;
-    this.drawDevChar(ctx, 756, 310, 1.8, blink);
+    this.drawDevChar(ctx, 756, 310, 1.8, blink, this.levelDeaths >= 3 ? "exhausted" : "worried");
 
     // Death line — pick based on levelDeaths, cap at 120 chars
     const deathLines = patch.deathLines ?? [];
@@ -1782,6 +2796,7 @@ export class Game {
 
   private drawLevelComplete(): void {
     const ctx = this.ctx;
+    const now = performance.now();
     const patch = this.currentPatch();
     const result = this.results[this.levelIndex];
     const medal = result?.medal ?? "shipped";
@@ -1790,28 +2805,49 @@ export class Game {
     drawText(ctx, "PATCH SHIPPED", 256, 222, 34, "#ffffff", "bold");
     drawText(ctx, `Patch ${patch.version}`, 258, 258, 18, "#cde9ff", "bold");
     drawText(ctx, medal.toUpperCase(), 420, 258, 22, medalColor(medal), "bold");
+    if (now < this.medalRevealUntil) {
+      const t = clamp((this.medalRevealUntil - now) / 920, 0, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.24 + t * 0.36;
+      ctx.strokeStyle = medalColor(medal);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(518, 250, 18 + (1 - t) * 42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (result) {
       drawText(ctx, `${result.seconds.toFixed(1)}s  ·  ${result.coins} coins  ·  ${result.deaths}d`, 258, 284, 15, "#fff5d6");
     }
     if (this.bonusChallengeActive) {
-      const filed = Boolean(this.level.bugReport?.collected);
+      const cleared = Boolean(result?.challenge);
       drawText(
         ctx,
-        filed ? "BUG REPORT FILED" : "Bug report missed",
+        cleared ? "CHALLENGE STAR EARNED" : "Challenge missed",
         258, 312, 15,
-        filed ? "#ff9aa7" : "#7c8dbb",
+        cleared ? "#ffdc3f" : "#7c8dbb",
         "bold",
       );
+      if (cleared && now < this.medalRevealUntil) {
+        drawText(ctx, "★", 538, 314, 22 + Math.sin(now / 80) * 2, "#ffdc3f", "bold");
+      }
     }
-    const nextY = this.bonusChallengeActive ? 352 : 322;
-    drawText(ctx, "R replay   Enter continue release train", 258, nextY, 15, "#9fc7ff", "bold");
+    const unlockVisible = this.level.id === 33 && now < this.doubleJumpUnlockUntil;
+    if (unlockVisible) {
+      drawPanel(ctx, 258, this.bonusChallengeActive ? 328 : 300, 318, 34, "rgba(12, 22, 42, 0.92)", "#70f5ff");
+      drawText(ctx, "DOUBLE JUMP UNLOCKED", 276, this.bonusChallengeActive ? 350 : 322, 15, "#70f5ff", "bold");
+      drawJumpPip(ctx, 526, this.bonusChallengeActive ? 338 : 310, true);
+      drawJumpPip(ctx, 542, this.bonusChallengeActive ? 338 : 310, true);
+    }
+    const nextY = unlockVisible ? (this.bonusChallengeActive ? 388 : 360) : this.bonusChallengeActive ? 352 : 322;
+    drawText(ctx, this.highlightRunActive ? "R replay   Enter next highlight" : "R replay   Enter continue", 258, nextY, 15, "#9fc7ff", "bold");
     this.hot(210, nextY - 18, 210, 26, () => { this.resetLevel(); this.startLevelIntro(); this.audio.play("restart"); });
     this.hot(420, nextY - 18, 330, 26, () => this.advanceLevel());
 
     // Dev character with joke bubble at bottom-right of complete panel
     const blink = Math.floor(performance.now() / 500) % 8 !== 0;
     const devX = 820, devY = this.bonusChallengeActive ? 440 : 420;
-    this.drawDevChar(ctx, devX, devY, 1.6, blink);
+    this.drawDevChar(ctx, devX, devY, 1.6, blink, "proud");
     // Joke bubble — auto-sized, capped at 120 chars
     const rawJoke = patch.devLines?.[patch.devLines.length - 1] ?? patch.joke;
     const joke = rawJoke.length > 120 ? rawJoke.slice(0, 117) + "…" : rawJoke;
@@ -1843,12 +2879,13 @@ export class Game {
     const now = performance.now();
     const runPauseAdjust = this.runPauseStart > 0 ? now - this.runPauseStart : 0;
     const totalSeconds = Math.max(0, (now - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000).toFixed(1);
+    const completedResults = this.results.filter((result): result is LevelResult => Boolean(result));
     const score = scoreRun({
       seconds: Number(totalSeconds),
       deaths: this.deaths,
       coins: this.totalCoins,
       reports: this.totalReports,
-      results: this.results,
+      results: completedResults,
     });
     if (score > this.bestScore) {
       this.bestScore = score;
@@ -1858,12 +2895,13 @@ export class Game {
     const gradeColor = grade === "S" ? "#ffdc3f" : grade === "A" ? "#87ffc4" : grade === "B" ? "#cde9ff" : "#ff9a3d";
 
     drawPanel(ctx, 54, 26, 852, 488, "rgba(7, 10, 26, 0.93)", "#87ffc4");
-    drawText(ctx, "ALL PATCHES DEPLOYED", 100, 82, 36, "#ffffff", "bold");
+    drawText(ctx, this.highlightRunActive ? "HIGHLIGHTS DEPLOYED" : "ALL PATCHES DEPLOYED", 100, 82, 36, "#ffffff", "bold");
 
+    const starDenom = this.highlightRunActive ? HIGHLIGHT_SEQUENCE.length : levels.length;
     drawText(ctx, `Grade ${grade}`, 100, 122, 22, gradeColor, "bold");
     drawText(ctx, `Score ${score}`, 248, 122, 20, "#ffdc3f", "bold");
     drawText(ctx, `Best ${this.bestScore}`, 510, 122, 16, "#87ffc4", "bold");
-    drawText(ctx, `Bugs ${this.totalReports}/${levels.length}`, 700, 122, 16, "#ff9aa7", "bold");
+    drawText(ctx, `Stars ${this.totalReports}/${starDenom}`, 700, 122, 16, "#ff9aa7", "bold");
     drawText(ctx, `Time ${totalSeconds}s   Deaths ${this.deaths}   Coins ${this.totalCoins}`, 100, 148, 15, "#cde9ff", "bold");
 
     drawText(ctx, "Release Record", 100, 176, 14, "#ffffff", "bold");
@@ -1871,9 +2909,12 @@ export class Game {
     const colW = 160;
     const gridX = 100;
     const gridY = 194;
-    const rowH = 20;
+    const rowH = 18;
     for (let i = 0; i < this.results.length && i < levels.length; i++) {
       const result = this.results[i];
+      if (!result) {
+        continue;
+      }
       const col = i % columns;
       const row = Math.floor(i / columns);
       const rx = gridX + col * colW;
@@ -1881,20 +2922,30 @@ export class Game {
       drawText(ctx, result.patch, rx, ry, 13, "#9fc7ff", "bold");
       drawText(ctx, result.medal.slice(0, 3).toUpperCase(), rx + 38, ry, 12, medalColor(result.medal), "bold");
       drawText(ctx, `${result.seconds.toFixed(1)}s`, rx + 76, ry, 11, "#fff5d6");
-      if (result.report) drawText(ctx, "BUG", rx + 122, ry, 10, "#ff9aa7", "bold");
+      if (result.challenge) drawText(ctx, "STAR", rx + 122, ry, 10, "#ffdc3f", "bold");
     }
 
-    let ry = 332;
-    for (const prompt of this.run.recapPrompts.slice(0, 3)) {
-      drawText(ctx, `- ${prompt}`, 100, ry, 14, "#fff5d6");
+    const stability = this.deaths === 0 && this.totalReports >= starDenom ? "stable, suspiciously" : this.deaths <= 3 ? "stable enough to demo" : "stable after several negotiations";
+    const failure = this.lastDeathReason || (this.deaths === 0 ? "No notable crashes. The engineer is unsettled." : "Unlabeled regression");
+    const failureSummary = this.deaths === 0 ? "none logged" : truncateText(failure, 28);
+    const reportLines = [
+      `Engineer report: release is ${stability}.`,
+      `Stars ${this.totalReports}/${starDenom}. Deaths ${this.deaths}. Favorite failure: ${failureSummary}.`,
+      this.run.recapPrompts[0] ?? "The release notes say everything is fine. Nobody signed them.",
+    ];
+    let ry = 350;
+    for (const line of reportLines) {
+      drawText(ctx, truncateText(line, 66), 100, ry, 14, "#fff5d6");
       ry += 22;
     }
+    const blink = Math.floor(now / 500) % 8 !== 0;
+    this.drawDevChar(ctx, 794, 382, 1.45, blink, this.deaths <= 1 ? "proud" : "exhausted");
 
-    drawText(ctx, this.shareUrl, 100, 404, 11, "#9fc7ff", "bold");
+    drawText(ctx, this.shareUrl, 100, 414, 11, "#9fc7ff", "bold");
 
     drawTextPill(ctx, "R  NEW RUN", 228, 462, "#111827", "#ffdc3f");
     this.hot(116, 442, 224, 34, () => { this.startRunAt(0); this.audio.play("start"); });
-    drawTextPill(ctx, "ENTER  RELEASE BOARD", 680, 462, "#111827", "#87ffc4");
+    drawTextPill(ctx, "ENTER  CHOOSE LEVEL", 680, 462, "#111827", "#87ffc4");
     this.hot(488, 442, 384, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
   }
 
@@ -2182,8 +3233,13 @@ export class Game {
         this.startRunAt(levelNumber - 1);
         return this.debugSnapshot();
       },
+      startHighlights: () => {
+        this.startHighlightRun();
+        return this.debugSnapshot();
+      },
       completeLevel: (seconds?: number) => {
-        const elapsed = seconds ?? Math.max(1, this.currentPatch().targetTime * 0.8);
+        const challengePar = this.bonusChallengeActive ? this.level.challenge?.parTime : undefined;
+        const elapsed = seconds ?? Math.max(1, (challengePar ?? this.currentPatch().targetTime) * 0.8);
         const now = performance.now();
         if (this.mode !== "playing") {
           this.startPlaying(now);
@@ -2196,6 +3252,14 @@ export class Game {
         if (this.bonusChallengeActive && this.level.bugReport) {
           this.level.bugReport.collected = true;
         }
+        for (const coin of this.level.coins) {
+          coin.collected = true;
+        }
+        this.levelCoins = this.level.coins.reduce((total, coin) => total + coin.value, 0);
+        this.sensorTrips = 0;
+        this.rollbackUses = 0;
+        this.secondJumpUsed = false;
+        this.exitedPadIndex = 0;
         this.setStatus();
         return this.debugSnapshot();
       },
@@ -2225,7 +3289,10 @@ export class Game {
       mode: this.mode,
       level: this.levelIndex + 1,
       bonusChallenge: this.bonusChallengeActive,
-      reportVisible: Boolean(this.bonusChallengeActive && this.level.bugReport && !this.level.bugReport.collected),
+      highlightRunActive: this.highlightRunActive,
+      doubleJumpUnlocked: this.hasDoubleJumpUnlocked(),
+      challengeComplete: this.bonusChallengeActive && this.isChallengeComplete(this.levelElapsed(performance.now())),
+      reportVisible: Boolean(this.bonusChallengeActive && this.challengeType() === "bug_report" && this.level.bugReport && !this.level.bugReport.collected),
       reportCollected: Boolean(this.level.bugReport?.collected),
       coins: this.levelCoins,
       deaths: this.deaths,
@@ -2307,23 +3374,27 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 function boardPageRange(selection: number, totalLevels: number): { page: number; totalPages: number; start: number; end: number } {
-  const totalPages = Math.max(1, Math.ceil(totalLevels / RELEASE_BOARD_PAGE_SIZE));
-  const page = clamp(Math.floor(selection / RELEASE_BOARD_PAGE_SIZE), 0, totalPages - 1);
-  const start = page * RELEASE_BOARD_PAGE_SIZE;
-  const end = Math.min(totalLevels - 1, start + RELEASE_BOARD_PAGE_SIZE - 1);
+  const totalPages = totalLevels > CHAPTER_TWO_START_INDEX ? 2 : 1;
+  const page = clamp(selection >= CHAPTER_TWO_START_INDEX ? 1 : 0, 0, totalPages - 1);
+  const start = page === 0 ? 0 : CHAPTER_TWO_START_INDEX;
+  const end = page === 0 ? Math.min(CHAPTER_TWO_START_INDEX - 1, totalLevels - 1) : totalLevels - 1;
   return { page, totalPages, start, end };
 }
 
 function previousBoardPageStart(selection: number, totalLevels: number): number {
   const range = boardPageRange(selection, totalLevels);
   const page = clamp(range.page - 1, 0, range.totalPages - 1);
-  return page * RELEASE_BOARD_PAGE_SIZE;
+  return page === 0 ? 0 : CHAPTER_TWO_START_INDEX;
 }
 
 function nextBoardPageStart(selection: number, totalLevels: number): number {
   const range = boardPageRange(selection, totalLevels);
   const page = clamp(range.page + 1, 0, range.totalPages - 1);
-  return page * RELEASE_BOARD_PAGE_SIZE;
+  return page === 0 ? 0 : CHAPTER_TWO_START_INDEX;
+}
+
+function boardColumnsForRange(range: { start: number }): number {
+  return range.start < CHAPTER_TWO_START_INDEX ? 5 : 2;
 }
 
 function releaseBoardLabel(modifier: PatchModifier): string {
@@ -2358,7 +3429,31 @@ function releaseBoardLabel(modifier: PatchModifier): string {
       return "Moving platforms";
     case "headwind":
       return "Headwind active";
+    case "production_intro":
+      return "Conveyors";
+    case "security_lasers":
+      return "Laser gates";
+    case "double_jump_unlock":
+      return "Double jump";
+    case "razor_rails":
+      return "Razor rails";
+    case "sweep_lasers":
+      return "Sweep lasers";
+    case "crusher_panels":
+      return "Crushers";
+    case "tesla_arcs":
+      return "Tesla arcs";
+    case "security_sensors":
+      return "Sensors";
+    case "plasma_vents":
+      return "Plasma vents";
+    case "production_finale":
+      return "Production finale";
   }
+}
+
+function chapterLabelForLevel(level: LevelDefinition | undefined): string {
+  return level?.chapter === "production_floor" ? "Chapter 2: The Production Floor" : "Chapter 1: The Patch Train";
 }
 
 function gravityVector(mode: GravityMode): Vec2 {
@@ -2382,22 +3477,63 @@ function nearestPulse(center: Vec2, pulses: MagnetPulse[]): Vec2 {
   return best;
 }
 
+function shrinkRect(rect: Rect, amount: number): Rect {
+  return {
+    x: rect.x + amount,
+    y: rect.y + amount,
+    w: Math.max(0, rect.w - amount * 2),
+    h: Math.max(0, rect.h - amount * 2),
+  };
+}
+
+function teslaHitbox(arc: TeslaArc): Rect {
+  const thickness = arc.thickness ?? 16;
+  const minX = Math.min(arc.x1, arc.x2) - thickness / 2;
+  const minY = Math.min(arc.y1, arc.y2) - thickness / 2;
+  const maxX = Math.max(arc.x1, arc.x2) + thickness / 2;
+  const maxY = Math.max(arc.y1, arc.y2) + thickness / 2;
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+function plasmaBeamRect(vent: PlasmaVent): Rect {
+  switch (vent.direction) {
+    case "up":
+      return { x: vent.x, y: vent.y - vent.length, w: vent.w, h: vent.length };
+    case "down":
+      return { x: vent.x, y: vent.y + vent.h, w: vent.w, h: vent.length };
+    case "left":
+      return { x: vent.x - vent.length, y: vent.y, w: vent.length, h: vent.h };
+    case "right":
+      return { x: vent.x + vent.w, y: vent.y, w: vent.length, h: vent.h };
+  }
+}
+
 function drawRect(ctx: CanvasRenderingContext2D, rect: Rect, fill: string, stroke: string): void {
   ctx.fillStyle = fill;
-  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.w, rect.h, Math.min(5, rect.h / 2, rect.w / 2));
+  ctx.fill();
   ctx.strokeStyle = stroke;
   ctx.lineWidth = 2;
-  ctx.strokeRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2);
+  ctx.beginPath();
+  ctx.roundRect(rect.x + 1, rect.y + 1, rect.w - 2, rect.h - 2, Math.min(4, rect.h / 2, rect.w / 2));
+  ctx.stroke();
 }
 
 function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string, stroke: string): void {
   ctx.fillStyle = fill;
-  ctx.fillRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 8);
+  ctx.fill();
   ctx.strokeStyle = stroke;
   ctx.lineWidth = 3;
-  ctx.strokeRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.roundRect(x + 1.5, y + 1.5, w - 3, h - 3, 7);
+  ctx.stroke();
   ctx.fillStyle = "rgba(255,255,255,0.08)";
-  ctx.fillRect(x + 4, y + 4, w - 8, 2);
+  ctx.beginPath();
+  ctx.roundRect(x + 8, y + 5, w - 16, 2, 1);
+  ctx.fill();
 }
 
 function drawText(
@@ -2460,16 +3596,35 @@ function drawTextPill(ctx: CanvasRenderingContext2D, text: string, centerX: numb
   const x = centerX - width / 2;
   const y = centerY - 20;
   ctx.fillStyle = fill;
-  ctx.fillRect(x, y, width, 34);
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, 34, 7);
+  ctx.fill();
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 1, width - 2, 32);
+  ctx.beginPath();
+  ctx.roundRect(x + 1, y + 1, width - 2, 32, 6);
+  ctx.stroke();
   ctx.fillStyle = color;
   ctx.fillText(text, x + 17, y + 23);
 }
 
+function drawJumpPip(ctx: CanvasRenderingContext2D, x: number, y: number, available: boolean): void {
+  ctx.fillStyle = available ? "#70f5ff" : "rgba(112,245,255,0.18)";
+  ctx.fillRect(x, y, 10, 10);
+  ctx.strokeStyle = "#70f5ff";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, 9, 9);
+}
+
 function severityLabel(severity: LevelPatch["severity"]): string {
   return severity === "stable" ? "STABLE" : severity === "rollback" ? "ROLLBACK" : `${severity.toUpperCase()} PATCH`;
+}
+
+function engineerMoodForPatch(severity: LevelPatch["severity"]): EngineerMood {
+  if (severity === "critical") return "exhausted";
+  if (severity === "major") return "worried";
+  if (severity === "stable") return "proud";
+  return "confident";
 }
 
 function severityColor(severity: LevelPatch["severity"]): string {
@@ -2604,9 +3759,9 @@ class AudioBus {
 
   private static themeKeyFor(mod: PatchModifier): keyof typeof AudioBus.THEMES {
     if (mod === "coin_spike_magnet" || mod === "crumbling_platforms" || mod === "finale_combo") return "frantic";
-    if (mod === "rotated_gravity" || mod === "async_platforms" || mod === "wide_world" || mod === "tall_world") return "eerie";
-    if (mod === "moving_platforms_h" || mod === "moving_exit") return "rolling";
-    if (mod === "headwind") return "wind";
+    if (mod === "rotated_gravity" || mod === "async_platforms" || mod === "wide_world" || mod === "tall_world" || mod === "tesla_arcs" || mod === "plasma_vents") return "eerie";
+    if (mod === "moving_platforms_h" || mod === "moving_exit" || mod === "production_intro" || mod === "sweep_lasers" || mod === "razor_rails") return "rolling";
+    if (mod === "headwind" || mod === "security_lasers" || mod === "security_sensors" || mod === "crusher_panels" || mod === "production_finale") return "wind";
     return "tense";
   }
 
@@ -2685,7 +3840,7 @@ class AudioBus {
     osc.stop(time + dur + 0.01);
   }
 
-  play(kind: "start" | "jump" | "coin" | "rollback" | "break" | "die" | "error" | "restart" | "complete" | "win" | "intro"): void {
+  play(kind: "start" | "jump" | "doubleJump" | "coin" | "rollback" | "break" | "die" | "error" | "restart" | "complete" | "win" | "intro"): void {
     this.ensureCtx();
     if (!this.musicRunning) this.startMusic();
     if (this.muted || !this.ctx || !this.masterGain) return;
@@ -2693,7 +3848,7 @@ class AudioBus {
     const gain = this.ctx.createGain();
     const now = this.ctx.currentTime;
     const freqs: Record<string, number> = {
-      start: 440, jump: 520, coin: 760, rollback: 320,
+      start: 440, jump: 520, doubleJump: 880, coin: 760, rollback: 320,
       break: 170, die: 90, error: 130, restart: 240,
       complete: 660, win: 880, intro: 380,
     };

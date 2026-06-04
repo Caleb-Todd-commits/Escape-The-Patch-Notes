@@ -7,6 +7,7 @@ export interface LevelResult {
   deaths: number;
   coins: number;
   report: boolean;
+  challenge?: boolean;
   medal: Medal;
 }
 

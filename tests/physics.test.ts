@@ -4,9 +4,12 @@ import { canonicalPatches } from "../src/shared/run";
 import {
   canUseExit,
   computeSpikeMagnetVelocity,
+  doubleJumpImpulse,
   frictionForModifier,
   intersects,
   isPlatformActive,
+  isTimedHazardActive,
+  isTimedHazardWarning,
   jumpImpulseForModifier,
 } from "../src/game/physics";
 
@@ -31,6 +34,20 @@ describe("platformer helpers", () => {
     expect(isPlatformActive(platform, 1.25)).toBe(false);
   });
 
+  it("handles timed tech hazard active and warning windows", () => {
+    const hazard = { on: 1, off: 1, warning: 0.25, phase: 0 };
+    expect(isTimedHazardActive(hazard, 0.5)).toBe(true);
+    expect(isTimedHazardActive(hazard, 1.25)).toBe(false);
+    expect(isTimedHazardWarning(hazard, 1.85)).toBe(true);
+  });
+
+  it("keeps double jump weaker than the first jump", () => {
+    const normal = jumpImpulseForModifier("base");
+
+    expect(doubleJumpImpulse(normal)).toBeLessThan(normal);
+    expect(doubleJumpImpulse(normal)).toBeGreaterThan(400);
+  });
+
   it("waives exit fees during rollback", () => {
     expect(canUseExit(2, 5)).toBe(false);
     expect(canUseExit(2, 5, true)).toBe(true);
@@ -44,11 +61,13 @@ describe("platformer helpers", () => {
     expect(far).toEqual({ x: 0, y: 0 });
   });
 
-  it("ships thirty levels with run metadata kept in lockstep", () => {
-    expect(levels).toHaveLength(30);
+  it("ships forty levels with run metadata kept in lockstep", () => {
+    expect(levels).toHaveLength(40);
     expect(canonicalPatches).toHaveLength(levels.length);
     expect(levels[10]?.modifier).toBe("finale_combo");
     expect(levels[29]?.modifier).toBe("finale_combo");
+    expect(levels[30]?.chapter).toBe("production_floor");
+    expect(levels[39]?.modifier).toBe("production_finale");
   });
 
   it("hides one optional bug report in every level", () => {

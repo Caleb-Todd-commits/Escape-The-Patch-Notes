@@ -1,8 +1,18 @@
 import type { PatchModifier } from "../shared/run";
 import type { Rect } from "./physics";
 
-export type PlatformKind = "solid" | "crumbling" | "async" | "moving";
+export type PlatformKind = "solid" | "crumbling" | "async" | "moving" | "conveyor";
 export type GravityMode = "down" | "right";
+export type ChapterId = "patch_train" | "production_floor";
+export type ChallengeType =
+  | "bug_report"
+  | "all_coins"
+  | "par_time"
+  | "no_sensor"
+  | "no_rollback"
+  | "no_double_jump"
+  | "first_exit"
+  | "master";
 
 export interface Platform extends Rect {
   id: string;
@@ -13,6 +23,7 @@ export interface Platform extends Rect {
   phase?: number;
   moveRange?: number;
   moveSpeed?: number;
+  conveyorSpeed?: number;
 }
 
 export interface Coin {
@@ -49,10 +60,79 @@ export interface ExitPad extends Rect {
   id: string;
 }
 
+export interface LevelChallenge {
+  type: ChallengeType;
+  label: string;
+  parTime?: number;
+}
+
+export interface TimedHazardRect extends Rect {
+  id: string;
+  on?: number;
+  off?: number;
+  phase?: number;
+  warning?: number;
+}
+
+export interface TrackHazard extends Rect {
+  id: string;
+  axis: "x" | "y";
+  range: number;
+  speed: number;
+  phase?: number;
+}
+
+export interface SweepLaser extends TrackHazard {
+  on?: number;
+  off?: number;
+  warning?: number;
+}
+
+export interface TeslaArc {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness?: number;
+  on?: number;
+  off?: number;
+  phase?: number;
+  warning?: number;
+}
+
+export interface SecuritySensor extends Rect {
+  id: string;
+  duration?: number;
+}
+
+export interface PlasmaVent extends Rect {
+  id: string;
+  direction: "up" | "down" | "left" | "right";
+  length: number;
+  on?: number;
+  off?: number;
+  phase?: number;
+  warning?: number;
+}
+
+export interface JumpPad extends Rect {
+  id: string;
+  force: number;
+}
+
+export interface LockdownDoor extends Rect {
+  id: string;
+  requiredCoins?: number;
+  opensAfter?: number;
+  linkedToLockdown?: boolean;
+}
+
 export interface LevelDefinition {
   id: number;
   patchId: number;
   title: string;
+  chapter?: ChapterId;
   modifier: PatchModifier;
   gravity: GravityMode;
   start: Rect;
@@ -66,6 +146,16 @@ export interface LevelDefinition {
   tokens?: RollbackToken[];
   bugReport?: BugReport;
   gates?: Rect[];
+  challenge?: LevelChallenge;
+  laserGates?: TimedHazardRect[];
+  sweepLasers?: SweepLaser[];
+  razors?: TrackHazard[];
+  crushers?: TrackHazard[];
+  teslaArcs?: TeslaArc[];
+  sensors?: SecuritySensor[];
+  plasmaVents?: PlasmaVent[];
+  jumpPads?: JumpPad[];
+  doors?: LockdownDoor[];
   bounds: Rect;
   background: string;
   wind?: number;
@@ -122,6 +212,104 @@ const coin = (id: string, x: number, y: number, value = 1): Coin => ({ id, x, y,
 const spike = (id: string, x: number, y: number, w = 32, h = 30): Spike => ({ id, x, y, w, h });
 const token = (id: string, x: number, y: number, seconds = 4.4): RollbackToken => ({ id, x, y, r: 12, seconds });
 const report = (id: string, x: number, y: number, title: string): BugReport => ({ id, x, y, r: 12, title });
+const conveyor = (id: string, x: number, y: number, w: number, speed = 115, h = 22): Platform => ({
+  id,
+  kind: "conveyor",
+  x,
+  y,
+  w,
+  h,
+  conveyorSpeed: speed,
+});
+const laserGate = (id: string, x: number, y: number, w: number, h: number, phase = 0): TimedHazardRect => ({
+  id,
+  x,
+  y,
+  w,
+  h,
+  phase,
+  on: 1.15,
+  off: 1.05,
+  warning: 0.42,
+});
+const sweepLaser = (
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  axis: "x" | "y",
+  range: number,
+  speed = 0.3,
+  phase = 0,
+): SweepLaser => ({ id, x, y, w, h, axis, range, speed, phase, on: 1.8, off: 0.55, warning: 0.35 });
+const razor = (
+  id: string,
+  x: number,
+  y: number,
+  size = 34,
+  axis: "x" | "y" = "x",
+  range = 90,
+  speed = 0.36,
+  phase = 0,
+): TrackHazard => ({ id, x, y, w: size, h: size, axis, range, speed, phase });
+const crusher = (
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  axis: "x" | "y",
+  range: number,
+  speed = 0.42,
+  phase = 0,
+): TrackHazard => ({ id, x, y, w, h, axis, range, speed, phase });
+const tesla = (id: string, x1: number, y1: number, x2: number, y2: number, phase = 0): TeslaArc => ({
+  id,
+  x1,
+  y1,
+  x2,
+  y2,
+  phase,
+  thickness: 18,
+  on: 1.3,
+  off: 0.95,
+  warning: 0.35,
+});
+const sensor = (id: string, x: number, y: number, w: number, h: number, duration = 3): SecuritySensor => ({
+  id,
+  x,
+  y,
+  w,
+  h,
+  duration,
+});
+const vent = (
+  id: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  direction: PlasmaVent["direction"],
+  length: number,
+  phase = 0,
+): PlasmaVent => ({ id, x, y, w, h, direction, length, phase, on: 0.95, off: 1.15, warning: 0.42 });
+const jumpPad = (id: string, x: number, y: number, w = 56, h = 16, force = 720): JumpPad => ({
+  id,
+  x,
+  y,
+  w,
+  h,
+  force,
+});
+const door = (id: string, x: number, y: number, w: number, h: number, options: Omit<LockdownDoor, "id" | "x" | "y" | "w" | "h"> = {}): LockdownDoor => ({
+  id,
+  x,
+  y,
+  w,
+  h,
+  ...options,
+});
 
 export const WORLD: Rect = { x: 0, y: 0, w: 960, h: 540 };
 export const WORLD_WIDE: Rect = { x: 0, y: 0, w: 1920, h: 540 };
@@ -1001,6 +1189,351 @@ export const levels: LevelDefinition[] = [
     bugReport: report("l30-bug", 1288, 250, "Final final stability incident"),
     bounds: WORLD_WIDE_MED,
     background: "#351a38",
+  },
+
+  {
+    id: 31,
+    patchId: 31,
+    title: "Patch 4.0",
+    chapter: "production_floor",
+    modifier: "production_intro",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 878, y: 296, w: 38, h: 62 },
+    challenge: { type: "all_coins", label: "Collect every neon coin before shipping." },
+    platforms: [
+      ground("l31-ground"),
+      conveyor("l31-belt1", 128, 442, 190, 112),
+      platform("l31-a", 354, 406, 120),
+      conveyor("l31-belt2", 530, 374, 190, -104),
+      platform("l31-c", 792, 360, 126),
+    ],
+    coins: [
+      coin("l31-c1", 190, 408), coin("l31-c2", 268, 408),
+      coin("l31-c3", 410, 372), coin("l31-c4", 604, 340),
+      coin("l31-c5", 842, 326),
+    ],
+    spikes: [spike("l31-s1", 330, 470), spike("l31-s2", 742, 470)],
+    bugReport: report("l31-bug", 604, 340, "Production conveyors created opinions"),
+    bounds: WORLD,
+    background: "#071b24",
+  },
+
+  {
+    id: 32,
+    patchId: 32,
+    title: "Patch 4.1",
+    chapter: "production_floor",
+    modifier: "security_lasers",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 878, y: 224, w: 38, h: 62 },
+    challenge: { type: "no_sensor", label: "Ship without crossing a security scanner." },
+    platforms: [
+      ground("l32-ground"),
+      platform("l32-a", 132, 430, 120),
+      platform("l32-b", 316, 382, 122),
+      platform("l32-c", 520, 334, 122),
+      platform("l32-d", 730, 286, 160),
+    ],
+    coins: [
+      coin("l32-c1", 184, 396), coin("l32-c2", 372, 348),
+      coin("l32-c3", 578, 300), coin("l32-c4", 810, 252),
+    ],
+    spikes: [spike("l32-s1", 276, 470), spike("l32-s2", 676, 470)],
+    laserGates: [
+      laserGate("l32-lg1", 274, 302, 24, 198, 0.1),
+      laserGate("l32-lg2", 484, 252, 24, 248, 0.9),
+      laserGate("l32-lg3", 690, 216, 24, 284, 1.6),
+    ],
+    sensors: [sensor("l32-scan1", 338, 300, 92, 82, 2.2)],
+    bugReport: report("l32-bug", 578, 300, "Security beams blinked politely"),
+    bounds: WORLD,
+    background: "#081d2f",
+  },
+
+  {
+    id: 33,
+    patchId: 33,
+    title: "Patch 4.2",
+    chapter: "production_floor",
+    modifier: "double_jump_unlock",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 872, y: 158, w: 38, h: 62 },
+    challenge: { type: "par_time", label: "Finish before the air-control audit expires.", parTime: 38 },
+    platforms: [
+      ground("l33-ground"),
+      platform("l33-a", 150, 430, 120),
+      platform("l33-b", 350, 356, 126),
+      platform("l33-c", 580, 274, 126),
+      platform("l33-d", 780, 220, 130),
+    ],
+    coins: [
+      coin("l33-c1", 206, 396), coin("l33-c2", 410, 322),
+      coin("l33-c3", 642, 240), coin("l33-c4", 842, 186),
+    ],
+    spikes: [spike("l33-s1", 296, 470), spike("l33-s2", 526, 470), spike("l33-s3", 738, 470)],
+    jumpPads: [jumpPad("l33-jp1", 244, 484), jumpPad("l33-jp2", 494, 484), jumpPad("l33-jp3", 720, 484)],
+    bugReport: report("l33-bug", 642, 240, "Air-control approval memo bounced"),
+    bounds: WORLD,
+    background: "#091f2a",
+  },
+
+  {
+    id: 34,
+    patchId: 34,
+    title: "Patch 4.3",
+    chapter: "production_floor",
+    modifier: "razor_rails",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1376, y: 268, w: 38, h: 62 },
+    challenge: { type: "all_coins", label: "Collect every coin while dodging razor rails." },
+    platforms: [
+      { id: "l34-ground", kind: "solid", x: 0, y: 500, w: 1440, h: 40 },
+      platform("l34-a", 148, 434, 112),
+      platform("l34-b", 342, 386, 112),
+      platform("l34-c", 556, 342, 112),
+      platform("l34-d", 776, 390, 112),
+      platform("l34-e", 1002, 334, 112),
+      platform("l34-f", 1230, 302, 160),
+    ],
+    coins: [
+      coin("l34-c1", 204, 400), coin("l34-c2", 398, 352),
+      coin("l34-c3", 612, 308), coin("l34-c4", 832, 356),
+      coin("l34-c5", 1058, 300), coin("l34-c6", 1294, 268),
+    ],
+    spikes: [spike("l34-s1", 286, 470), spike("l34-s2", 514, 470), spike("l34-s3", 928, 470), spike("l34-s4", 1182, 470)],
+    razors: [
+      razor("l34-rz1", 468, 412, 34, "y", 58, 0.46, 0.4),
+      razor("l34-rz2", 706, 350, 34, "x", 86, 0.38, 1.1),
+      razor("l34-rz3", 1140, 328, 38, "y", 72, 0.42, 2.0),
+    ],
+    bugReport: report("l34-bug", 1058, 300, "Indexer returned sharp results"),
+    bounds: WORLD_WIDE_MED,
+    background: "#071720",
+  },
+
+  {
+    id: 35,
+    patchId: 35,
+    title: "Patch 4.4",
+    chapter: "production_floor",
+    modifier: "sweep_lasers",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: {
+      x: 844,
+      y: 438,
+      w: 38,
+      h: 62,
+      pads: [
+        { id: "l35-p1", x: 844, y: 438, w: 38, h: 62 },
+        { id: "l35-p2", x: 638, y: 318, w: 38, h: 62 },
+        { id: "l35-p3", x: 864, y: 210, w: 38, h: 62 },
+      ],
+    },
+    challenge: { type: "first_exit", label: "Reach the first active exit before it relocates." },
+    platforms: [
+      ground("l35-ground"),
+      platform("l35-a", 134, 432, 120),
+      platform("l35-b", 314, 384, 120),
+      platform("l35-c", 554, 352, 120),
+      platform("l35-d", 748, 244, 156),
+      platform("l35-e", 772, 452, 110),
+    ],
+    coins: [
+      coin("l35-c1", 190, 398), coin("l35-c2", 370, 350),
+      coin("l35-c3", 614, 318), coin("l35-c4", 840, 210),
+    ],
+    spikes: [spike("l35-s1", 280, 470), spike("l35-s2", 500, 470), spike("l35-s3", 704, 470)],
+    sweepLasers: [
+      sweepLaser("l35-sw1", 410, 252, 210, 14, "y", 86, 0.32, 0.2),
+      sweepLaser("l35-sw2", 680, 168, 14, 232, "x", 78, 0.36, 1.4),
+    ],
+    bugReport: report("l35-bug", 614, 318, "Load balancer disliked fixed doors"),
+    bounds: WORLD,
+    background: "#08182d",
+  },
+
+  {
+    id: 36,
+    patchId: 36,
+    title: "Patch 4.5",
+    chapter: "production_floor",
+    modifier: "crusher_panels",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 878, y: 254, w: 38, h: 62 },
+    challenge: { type: "par_time", label: "Clear compression under par time.", parTime: 44 },
+    platforms: [
+      ground("l36-ground"),
+      platform("l36-a", 134, 430, 116),
+      platform("l36-b", 306, 382, 118),
+      platform("l36-c", 500, 424, 116),
+      platform("l36-d", 690, 356, 118),
+      platform("l36-e", 812, 318, 116),
+    ],
+    coins: [
+      coin("l36-c1", 190, 396), coin("l36-c2", 362, 348),
+      coin("l36-c3", 556, 390), coin("l36-c4", 748, 322),
+      coin("l36-c5", 866, 284),
+    ],
+    spikes: [spike("l36-s1", 268, 470), spike("l36-s2", 462, 470), spike("l36-s3", 650, 470)],
+    crushers: [
+      crusher("l36-cr1", 272, 220, 46, 112, "y", 90, 0.42, 0.2),
+      crusher("l36-cr2", 632, 210, 52, 126, "y", 104, 0.44, 1.2),
+      crusher("l36-cr3", 814, 196, 48, 112, "y", 82, 0.48, 2.1),
+    ],
+    bugReport: report("l36-bug", 748, 322, "Compression panel overachieved"),
+    bounds: WORLD,
+    background: "#101522",
+  },
+
+  {
+    id: 37,
+    patchId: 37,
+    title: "Patch 4.6",
+    chapter: "production_floor",
+    modifier: "tesla_arcs",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 878, y: 226, w: 38, h: 62 },
+    challenge: { type: "no_rollback", label: "Ship without using a rollback token." },
+    platforms: [
+      ground("l37-ground"),
+      platform("l37-a", 142, 430, 116),
+      platform("l37-b", 322, 374, 116),
+      platform("l37-c", 518, 330, 116),
+      platform("l37-d", 706, 286, 116),
+      platform("l37-e", 824, 286, 108),
+    ],
+    coins: [
+      coin("l37-c1", 196, 396), coin("l37-c2", 378, 340),
+      coin("l37-c3", 574, 296), coin("l37-c4", 760, 252),
+    ],
+    spikes: [spike("l37-s1", 282, 470), spike("l37-s2", 676, 470)],
+    tokens: [token("l37-r1", 284, 392, 3.8), token("l37-r2", 662, 300, 3.6)],
+    teslaArcs: [
+      tesla("l37-t1", 288, 318, 288, 500, 0.1),
+      tesla("l37-t2", 474, 264, 474, 500, 0.9),
+      tesla("l37-t3", 660, 224, 660, 500, 1.7),
+    ],
+    bugReport: report("l37-bug", 574, 296, "Merge conflict gained voltage"),
+    bounds: WORLD,
+    background: "#11142b",
+  },
+
+  {
+    id: 38,
+    patchId: 38,
+    title: "Patch 4.7",
+    chapter: "production_floor",
+    modifier: "security_sensors",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1378, y: 266, w: 38, h: 62 },
+    challenge: { type: "no_sensor", label: "Reach the exit without triggering lockdown." },
+    platforms: [
+      { id: "l38-ground", kind: "solid", x: 0, y: 500, w: 1440, h: 40 },
+      platform("l38-a", 150, 432, 116),
+      platform("l38-b", 338, 382, 116),
+      platform("l38-c", 552, 334, 116),
+      platform("l38-d", 774, 382, 116),
+      platform("l38-e", 1002, 330, 116),
+      platform("l38-f", 1238, 302, 150),
+    ],
+    coins: [
+      coin("l38-c1", 206, 398), coin("l38-c2", 394, 348),
+      coin("l38-c3", 608, 300), coin("l38-c4", 830, 348),
+      coin("l38-c5", 1060, 296), coin("l38-c6", 1300, 268),
+    ],
+    spikes: [spike("l38-s1", 288, 470), spike("l38-s2", 704, 470), spike("l38-s3", 1180, 470)],
+    sensors: [
+      sensor("l38-sn1", 464, 294, 96, 112, 3),
+      sensor("l38-sn2", 900, 288, 110, 116, 3),
+    ],
+    doors: [
+      door("l38-d1", 690, 342, 34, 158, { linkedToLockdown: true }),
+      door("l38-d2", 1162, 318, 34, 182, { linkedToLockdown: true }),
+    ],
+    laserGates: [laserGate("l38-lg1", 1162, 318, 34, 182, 0.55)],
+    bugReport: report("l38-bug", 1060, 296, "Observability watched too hard"),
+    bounds: WORLD_WIDE_MED,
+    background: "#061b2b",
+  },
+
+  {
+    id: 39,
+    patchId: 39,
+    title: "Patch 4.8",
+    chapter: "production_floor",
+    modifier: "plasma_vents",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1376, y: 214, w: 38, h: 62 },
+    challenge: { type: "all_coins", label: "Collect every coin while the cooling system vents." },
+    platforms: [
+      { id: "l39-ground", kind: "solid", x: 0, y: 500, w: 1440, h: 40 },
+      asyncPlatform("l39-a", 146, 432, 116, 22, 0.1),
+      platform("l39-rest1", 330, 386, 116),
+      asyncPlatform("l39-b", 538, 342, 116, 22, 0.9),
+      platform("l39-rest2", 740, 392, 116),
+      asyncPlatform("l39-c", 966, 326, 116, 22, 1.6),
+      platform("l39-d", 1226, 278, 160),
+    ],
+    coins: [
+      coin("l39-c1", 202, 398), coin("l39-c2", 388, 352),
+      coin("l39-c3", 594, 308), coin("l39-c4", 800, 358),
+      coin("l39-c5", 1024, 292), coin("l39-c6", 1300, 244),
+    ],
+    spikes: [spike("l39-s1", 280, 470), spike("l39-s2", 500, 470), spike("l39-s3", 900, 470), spike("l39-s4", 1188, 470)],
+    plasmaVents: [
+      vent("l39-v1", 300, 492, 62, 8, "up", 154, 0.2),
+      vent("l39-v2", 670, 492, 62, 8, "up", 176, 1.0),
+      vent("l39-v3", 1118, 492, 62, 8, "up", 190, 1.8),
+    ],
+    bugReport: report("l39-bug", 1024, 292, "Cooling fix ran very hot"),
+    bounds: WORLD_WIDE_MED,
+    background: "#081724",
+  },
+
+  {
+    id: 40,
+    patchId: 40,
+    title: "Patch 4.9",
+    chapter: "production_floor",
+    modifier: "production_finale",
+    gravity: "down",
+    start: { x: 54, y: 458, w: 28, h: 34 },
+    exit: { x: 1378, y: 182, w: 38, h: 62, fee: 6 },
+    challenge: { type: "master", label: "Master patch: all coins and under par.", parTime: 76 },
+    platforms: [
+      { id: "l40-ground", kind: "solid", x: 0, y: 500, w: 1440, h: 40 },
+      conveyor("l40-belt1", 130, 444, 178, 114),
+      platform("l40-a", 354, 398, 112),
+      platform("l40-b", 544, 344, 112),
+      conveyor("l40-belt2", 742, 392, 164, -108),
+      platform("l40-c", 980, 326, 116),
+      platform("l40-d", 1228, 244, 160),
+    ],
+    coins: [
+      coin("l40-c1", 196, 410), coin("l40-c2", 410, 364),
+      coin("l40-c3", 600, 310), coin("l40-c4", 814, 358),
+      coin("l40-c5", 1038, 292), coin("l40-c6", 1298, 210),
+      coin("l40-c7", 866, 470), coin("l40-c8", 118, 470),
+    ],
+    spikes: [spike("l40-s1", 318, 470), spike("l40-s2", 708, 470), spike("l40-s3", 1186, 470)],
+    laserGates: [laserGate("l40-lg1", 486, 252, 24, 248, 0.25)],
+    sweepLasers: [sweepLaser("l40-sw1", 880, 226, 190, 14, "y", 96, 0.34, 0.8)],
+    razors: [razor("l40-rz1", 656, 372, 36, "x", 82, 0.42, 1.5), razor("l40-rz2", 1128, 298, 38, "y", 70, 0.46, 2.2)],
+    crushers: [crusher("l40-cr1", 1194, 134, 54, 118, "y", 92, 0.46, 0.6)],
+    plasmaVents: [vent("l40-v1", 920, 492, 62, 8, "up", 176, 1.3)],
+    jumpPads: [jumpPad("l40-jp1", 308, 484, 54, 16, 700), jumpPad("l40-jp2", 910, 484, 54, 16, 700)],
+    bugReport: report("l40-bug", 1298, 210, "Release candidate remained unstable"),
+    bounds: WORLD_WIDE_MED,
+    background: "#0a1424",
   },
 ];
 

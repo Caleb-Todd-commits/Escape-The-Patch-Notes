@@ -32,15 +32,17 @@ describe("level progress", () => {
       bestTime: 20,
       bestMedal: "gold",
       reportCollected: true,
+      challengeCompleted: true,
       bestCoins: 3,
       bestDeaths: 0,
     });
   });
 
   it("parses persisted progress defensively and supports old boolean data", () => {
-    expect(parseLevelProgress('{"1":true,"2":{"completed":true,"bestTime":18.222,"bestMedal":"gold","reportCollected":true},"3":false}')).toEqual({
+    expect(parseLevelProgress('{"1":true,"2":{"completed":true,"bestTime":18.222,"bestMedal":"gold","reportCollected":true},"4":{"completed":true,"challengeCompleted":true},"3":false}')).toEqual({
       1: { completed: true },
-      2: { completed: true, bestTime: 18.22, bestMedal: "gold", reportCollected: true },
+      2: { completed: true, bestTime: 18.22, bestMedal: "gold", reportCollected: true, challengeCompleted: true },
+      4: { completed: true, challengeCompleted: true },
     });
     expect(parseLevelProgress("not json")).toEqual({});
   });

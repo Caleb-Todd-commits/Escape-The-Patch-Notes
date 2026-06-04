@@ -80,7 +80,7 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
           strict: true,
         },
       },
-      max_output_tokens: 4500,
+      max_output_tokens: 6000,
     });
 
     const parsed = JSON.parse(response.output_text);

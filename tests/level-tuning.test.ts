@@ -51,6 +51,20 @@ describe("level tuning", () => {
     expect(targets.async_platforms).toBeGreaterThanOrEqual(42);
     expect(targets.rollback_token).toBeGreaterThanOrEqual(42);
     expect(targets.finale_combo).toBeGreaterThanOrEqual(65);
+    expect(targets.production_finale).toBeGreaterThanOrEqual(75);
+  });
+
+  it("adds a distinct production chapter with modern tech hazards", () => {
+    const chapterTwo = levels.slice(30);
+
+    expect(chapterTwo).toHaveLength(10);
+    expect(chapterTwo.every((level) => level.chapter === "production_floor")).toBe(true);
+    expect(chapterTwo.some((level) => (level.laserGates?.length ?? 0) > 0)).toBe(true);
+    expect(chapterTwo.some((level) => (level.razors?.length ?? 0) > 0)).toBe(true);
+    expect(chapterTwo.some((level) => (level.crushers?.length ?? 0) > 0)).toBe(true);
+    expect(chapterTwo.some((level) => (level.teslaArcs?.length ?? 0) > 0)).toBe(true);
+    expect(chapterTwo.some((level) => (level.plasmaVents?.length ?? 0) > 0)).toBe(true);
+    expect(levels[32]?.modifier).toBe("double_jump_unlock");
   });
 });
 

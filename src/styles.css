@@ -33,7 +33,7 @@ body {
 canvas {
   width: min(100vw - 24px, calc((100vh - 24px) * 16 / 9));
   height: min(100vh - 24px, calc((100vw - 24px) * 9 / 16));
-  image-rendering: pixelated;
+  image-rendering: auto;
   border: 2px solid rgba(129, 221, 255, 0.7);
   border-radius: 8px;
   background: #0b1024;

@@ -5,6 +5,7 @@ export interface LevelProgress {
   bestTime?: number;
   bestMedal?: Medal;
   reportCollected?: boolean;
+  challengeCompleted?: boolean;
   bestCoins?: number;
   bestDeaths?: number;
 }
@@ -29,6 +30,7 @@ export function updateLevelProgress(progress: LevelProgressMap, result: LevelRes
       bestTime,
       bestMedal,
       reportCollected: Boolean(current.reportCollected || result.report),
+      challengeCompleted: Boolean(current.challengeCompleted || result.challenge || result.report),
       bestCoins: current.bestCoins === undefined ? result.coins : Math.max(current.bestCoins, result.coins),
       bestDeaths: current.bestDeaths === undefined ? result.deaths : Math.min(current.bestDeaths, result.deaths),
     },
@@ -74,6 +76,7 @@ function normalizeProgress(value: unknown): LevelProgress | undefined {
   if (bestTime !== undefined) progress.bestTime = bestTime;
   if (isMedal(record.bestMedal)) progress.bestMedal = record.bestMedal;
   if (record.reportCollected === true) progress.reportCollected = true;
+  if (record.challengeCompleted === true || record.reportCollected === true) progress.challengeCompleted = true;
   if (bestCoins !== undefined) progress.bestCoins = bestCoins;
   if (bestDeaths !== undefined) progress.bestDeaths = bestDeaths;
 
