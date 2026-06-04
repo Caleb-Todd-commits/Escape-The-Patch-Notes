@@ -4,21 +4,47 @@
 
 **Play now: https://escape-the-patch-notes.vercel.app**
 
-Escape the Patch Notes is a browser platformer where every level introduces a new suspicious patch note. The first level behaves like a normal coin-and-exit platformer. Then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and the final release bundles the previous mistakes together.
+Escape the Patch Notes is a browser platformer where every level introduces a new suspicious patch note. The first chapter starts like a normal coin-and-exit platformer, then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and final stability bundles stack the previous mistakes together. Chapter 2 moves into **The Production Floor**, a modern tech gauntlet with conveyors, lasers, razors, crushers, tesla arcs, sensors, plasma vents, and an unlockable double jump.
+
+## Screenshots
+
+| Title | Choose Level |
+|---|---|
+| ![Title screen](public/screenshots/title.png) | ![Choose Level Chapter 2](public/screenshots/choose-level-chapter-2.png) |
+
+| Production Floor | Release Report |
+|---|---|
+| ![Production Floor finale](public/screenshots/production-finale.png) | ![Win screen](public/screenshots/win-screen.png) |
 
 ## What I Made
 
-- A playable Vite + TypeScript + Canvas game with 30 short levels across Patch 1.0 through 3.9.
-- Deterministic platformer physics, fixed level layouts, restarts, pause, paged Release Board level select, win screen, scoring, medals, persistent progress, and shareable run seeds.
+- A playable Vite + TypeScript + Canvas game with 40 short levels across Patch 1.0 through 4.9.
+- Deterministic platformer physics, fixed level layouts, restarts, pause, two-page Choose Level screen, win screen, scoring, medals, persistent progress, and shareable run seeds.
+- A judge-first **Start Highlights** route that plays five curated patches in order, so the best jokes and mechanics are visible in the first few minutes.
 - Chiptune background music (Web Audio lookahead scheduler), pitch-shifted intro sounds per patch, particle bursts, and screen shake for each meaningful event.
-- Release-train progress indicator in the HUD showing all 30 patches by medal color as you advance.
-- Per-level patch completion cards with time, coins, deaths, and bug-report status at a glance.
-- Full release report on the win screen: all 30 level medals, time, deaths, coins, and recap prompts.
-- Three Release Board slides for Patch 1.0-1.9, 2.0-2.9, and 3.0-3.9, with visible forward/back arrows.
-- **Settings → Jump to Level**: inline ← [N] → picker that launches any of the 30 levels instantly — no board navigation needed. Intended for judges who want to skip straight to the hardest patches.
-- Completion-gated bug-report replay challenge: once you beat a level, replaying shows a hidden bug-report collectible that improves medal scoring.
+- Release-train progress indicator in the HUD showing all 40 patches by medal color as you advance.
+- Per-level patch completion cards with time, coins, deaths, medal, and challenge-star status at a glance.
+- Full release report on the win screen: all 40 level medals, time, deaths, coins, challenge stars, and recap prompts.
+- Two-page Choose Level screen: all 30 Chapter 1 levels on page one and all 10 Chapter 2 levels on page two, with visible forward/back arrows.
+- **Settings → Jump to Level**: inline ← [N] → picker that launches any of the 40 levels instantly. Intended for judges who want to skip straight to the hardest or flashiest patches.
+- **Start Highlights** button on the title screen and `H` shortcut on the Choose Level screen to jump between standout levels quickly.
+- Completion-gated replay challenges: once you beat a level, replaying unlocks an extra Challenge Patch goal such as filing a bug report, collecting every coin, beating par time, avoiding sensors, skipping rollback, or mastering a finale route.
+- Chapter 2 double jump unlock: beat Patch 4.2 normally to unlock double jump for the Production Floor; jumping directly to Patch 4.3+ enables it automatically for judges.
+- Game-feel polish: coyote time, jump buffering, variable jump height, smoother camera lead, landing particles, double-jump trails, glowing portals, smoother spikes, and clearer hazard warning states.
 - A Vercel serverless API route at `POST /api/run` that uses the OpenAI Responses API to generate funny run-specific patch-note flavor via Structured Outputs.
 - A safe deterministic fallback run, so the game is fully playable without an API key.
+
+## Best Levels for Judges
+
+The fastest path is the **Start Highlights** button on the title screen. It plays:
+
+- Patch `1.2` — coins attract spikes.
+- Patch `1.3` — gravity rotates sideways.
+- Patch `3.9` — late Chapter 1 stability gets suspicious.
+- Patch `4.2` — Production Floor double-jump unlock.
+- Patch `4.9` — Production Floor finale with lasers, razors, crushers, and moving exits.
+
+For direct access, press `B` for Choose Level or use **Settings → Jump to Level**. Chapter 2 is page two of Choose Level.
 
 ## How Codex Helped
 
@@ -26,29 +52,31 @@ Codex was used throughout the build to rapidly prototype, iterate, and finish th
 
 - **Architecture decisions** — Codex proposed keeping all gameplay state (physics, levels, win/loss) deterministic and local, with AI touching only flavor copy. This made the game testable and fair regardless of API availability.
 - **Game loop and physics** — Codex implemented the canvas render loop, AABB collision with per-axis resolution, modifier system (crumbling platforms, spike magnet, async platforms, rollback tokens), and the gravity-rotation mechanic.
-- **Level design and tuning** — All 30 level layouts, coin placements, and spike positions were generated and tuned by Codex based on playtest feedback (shorter target times, less punishing mechanics, clearer paths).
+- **Level design and tuning** — All 40 level layouts, coin placements, hazards, and challenge objectives were generated and tuned by Codex based on playtest feedback (shorter target times, clearer paths, more judge-friendly highlights).
 - **OpenAI integration** — Codex wrote the `/api/run` Vercel serverless function using the Responses API with a JSON Schema for Structured Outputs, the sanitizer that falls back gracefully on any bad output, and the seed-based run-ID system for shareable links.
-- **Tests** — Codex wrote the full Vitest unit suite (physics, scoring, progress, run sanitizer) and the Playwright end-to-end sweep across all 30 levels including replay-challenge paths.
-- **Polish** — Chiptune music, release-train HUD, win-screen layout, medal grid for all 30 levels, per-patch transition sounds, and particle variations were all implemented or refined with Codex.
+- **Tests** — Codex wrote the full Vitest unit suite (physics, scoring, progress, run sanitizer, level tuning) and the Playwright end-to-end sweep across all 40 levels including replay-challenge paths.
+- **Polish** — Chiptune music, release-train HUD, Chapter 2 tech visuals, double-jump indicator, win-screen layout, medal grid for all 40 levels, per-patch transition sounds, and particle variations were all implemented or refined with Codex.
 
 ## How to Play
 
 - Move: `A/D` or left/right arrows
 - Jump: `Space`, `W`, or up arrow
+- Double jump: press jump again in the air after it unlocks in Chapter 2
 - Restart level: `R`
 - Pause: `Esc`
 - Mute: `M`
 - Settings: `S` from title or pause
-- Release Board: `B`
-- Board select: arrow keys
-- Board previous/next slide: `Q/E` or the on-screen arrows
-- Board deploy selected patch: `Enter` or `Space`
+- Choose Level: `B`
+- Choose Level select: arrow keys
+- Choose Level previous/next chapter: `Q/E` or the on-screen arrows
+- Choose Level deploy selected patch: `Enter` or `Space`
+- Start Highlights: title screen button
 
 Collect coins, dodge spikes, and reach the exit. Some exits charge a coin fee. Rollback tokens briefly suppress the current patch effect.
 
-The Release Board is split into three major-version slides: Patch 1.0-1.9, Patch 2.0-2.9, and Patch 3.0-3.9. It shows every patch, whether it has been cleared, whether the replay challenge is unlocked, the best medal, bug-report state, and best time. Settings includes a Game Select option that opens this board so judges can jump directly to any level.
+Choose Level is split into two chapter pages. Page one shows all 30 Chapter 1 patches at once, and page two shows all 10 Chapter 2 Production Floor patches. It shows every patch, whether it has been cleared, whether the replay challenge is unlocked, the best medal, challenge-star state, and best time. Settings also includes a Jump to Level option so judges can jump directly to any level.
 
-The first time you play a level, the objective is simple: reach the exit and ship the patch. Once you successfully complete that level, replaying it unlocks an extra bug-report challenge. Collecting reports and finishing quickly with few deaths earns better release medals. The final screen grades the full run and stores your best score locally.
+The first time you play a level, the objective is simple: reach the exit and ship the patch. Once you successfully complete that level, replaying it unlocks a Challenge Patch. Chapter 1 challenges usually ask you to file a hidden bug report. Chapter 2 challenges ask for more arcade goals: all coins, par time, no sensors, no rollback, or master finale objectives. Challenge stars and fast, clean clears earn better medals. The final screen grades the full run and stores your best score locally.
 
 ## Run Locally
 
@@ -80,10 +108,14 @@ npm run build
 npm run test:browser
 ```
 
-The browser test suite smoke-tests the Release Board and runs a full normal-clear plus replay-challenge sweep across all 30 patches.
+The browser test suite smoke-tests Choose Level, checks the highlights route and Chapter 2 unlock flow, captures README screenshots, and runs a full normal-clear plus replay-challenge sweep across all 40 patches.
 
 ## Submission Blurb
 
-**Escape the Patch Notes** is a browser platformer slowly ruined by its own updates. Across 30 levels, each patch ships a new suspicious rule or remix: jump height nerfed for balance, coins now attract spikes, gravity rotated 90 degrees, platforms have a durability budget, exits charge fees, worlds expand, platforms move, wind pushes back, and Patch 3.9 bundles the chaos into one final stability incident. Beat a level once to ship the patch; replay it to file the hidden bug report. Judges can use Settings > Game Select to jump directly to the most interesting patches. Finish the run and get a full release report graded from SHIP? to S.
+- **Public repo:** https://github.com/Caleb-Todd-commits/Escape-The-Patch-Notes
+- **Playable link:** https://escape-the-patch-notes.vercel.app
+- **Short description:** A browser platformer slowly ruined by its own updates.
+
+**Escape the Patch Notes** is a browser platformer slowly ruined by its own updates. Across 40 levels, each patch ships a new suspicious rule or remix: jump height nerfed for balance, coins now attract spikes, gravity rotated 90 degrees, platforms have a durability budget, exits charge fees, worlds expand, platforms move, wind pushes back, and Chapter 2 escalates into a modern Production Floor full of conveyors, lasers, razors, crushers, sensors, plasma vents, and an unlockable double jump. Beat a level once to ship the patch; replay it to earn its Challenge Patch star. Judges can use Start Highlights, Choose Level, or Settings > Jump to Level to skip directly to the most interesting patches. Finish the run and get a full release report graded from SHIP? to S.
 
 The OpenAI Responses API generates the run's flavor — patch-note copy, severity labels, jokes, finale recap — via Structured Outputs. All gameplay is deterministic and fully playable with the fallback copy when no API key is present. The entire game was designed and built with Codex.
