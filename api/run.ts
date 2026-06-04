@@ -15,10 +15,13 @@ interface VercelResponseLike {
 const SYSTEM_PROMPT = [
   "You write safe, funny patch notes for a browser platformer called Escape the Patch Notes.",
   "The deterministic game engine already owns all layouts, hazards, physics, controls, and scoring.",
-  "Return only flavor copy: run title, patch-note copy, severity labels, level jokes, finale recap, and game-over summary.",
+  "Return only flavor copy: run title, patch-note copy, severity labels, level jokes, dev dialogue, finale recap, and game-over summary.",
   "Never invent collision boxes, enemy movement, physics values, layouts, win rules, loss rules, player modifiers, or mechanics.",
   "No gore, harassment, hate, profanity, sexual content, secrets, credentials, or references to real private people.",
   "Keep the tone playful, concise, and competition-ready.",
+  "For each level, write devLines: short lines spoken by the (slightly guilty, overworked) developer who shipped this patch.",
+  "Levels 1-3 get 2 devLines each — a setup and a punchline. All other levels get exactly 1 short devLine.",
+  "devLines are 1-2 sentences, casual, first-person, dry humor. The dev is responsible for all the chaos but stays upbeat.",
 ].join(" ");
 
 export default async function handler(req: VercelRequestLike, res: VercelResponseLike): Promise<void> {

@@ -37,6 +37,7 @@ type GameMode =
   | "loading"
   | "title"
   | "releaseBoard"
+  | "devDialog"
   | "levelIntro"
   | "playing"
   | "paused"
@@ -181,6 +182,9 @@ export class Game {
   private huntUntil = 0;
   private themeFlashUntil = 0;
   private themeFlashColor = "";
+  private devDialogSlide = 0;
+  private devDialogLines: string[] = [];
+  private devDialogProceed: (() => void) | null = null;
   private particles: Particle[] = [];
   private shakeUntil = 0;
   private shakeMagnitude = 0;
@@ -297,6 +301,11 @@ export class Game {
       }
 
       if (event.code === "Enter" || event.code === "Space") {
+        if (this.mode === "devDialog") {
+          this.advanceDevDialog();
+          return;
+        }
+
         if (this.mode === "title") {
           if (event.code === "Space") {
             this.startRunAt(0);
@@ -342,6 +351,10 @@ export class Game {
     });
 
     this.canvas.addEventListener("pointerdown", (e) => {
+      if (this.mode === "devDialog") {
+        this.advanceDevDialog();
+        return;
+      }
       const rect = this.canvas.getBoundingClientRect();
       const lx = (e.clientX - rect.left) * (VIEW_W / rect.width);
       const ly = (e.clientY - rect.top) * (VIEW_H / rect.height);
@@ -883,8 +896,6 @@ export class Game {
 
   private startLevelIntro(time = performance.now()): void {
     this.beginLevelAttempt();
-    this.levelIntroUntil = time + LEVEL_INTRO_MS;
-    this.setMode("levelIntro");
     const prevTheme = this.audio.currentThemeKey;
     this.audio.switchTheme(this.level.modifier);
     if (this.audio.currentThemeKey !== prevTheme) {
@@ -898,6 +909,33 @@ export class Game {
       }
     }
     this.audio.play("intro");
+
+    // Levels 1–3 show the full dev dialog before the patch intro card
+    const patch = this.currentPatch();
+    const lines = patch.devLines ?? [];
+    if (this.levelIndex < 3 && lines.length > 0) {
+      this.devDialogLines = lines;
+      this.devDialogSlide = 0;
+      this.devDialogProceed = () => this.beginPatchIntro(time);
+      this.setMode("devDialog");
+    } else {
+      this.beginPatchIntro(time);
+    }
+  }
+
+  private beginPatchIntro(time: number): void {
+    this.levelIntroUntil = time + LEVEL_INTRO_MS;
+    this.setMode("levelIntro");
+  }
+
+  private advanceDevDialog(): void {
+    this.audio.play("start");
+    if (this.devDialogSlide < this.devDialogLines.length - 1) {
+      this.devDialogSlide++;
+    } else {
+      this.devDialogProceed?.();
+      this.devDialogProceed = null;
+    }
   }
 
   private startPlaying(time: number): void {
@@ -1005,6 +1043,12 @@ export class Game {
 
     if (this.mode === "settings") {
       this.drawSettings();
+      ctx.restore();
+      return;
+    }
+
+    if (this.mode === "devDialog") {
+      this.drawDevDialog(ctx);
       ctx.restore();
       return;
     }
@@ -1310,6 +1354,12 @@ export class Game {
     const runPauseAdjust = this.runPauseStart > 0 ? time - this.runPauseStart : 0;
     const runElapsed = Math.max(0, (time - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000);
 
+    // Mini dev avatar in HUD (levels 4+) — small character with hard hat
+    if (this.levelIndex >= 3) {
+      const blink = Math.floor(time / 600) % 6 !== 0;
+      this.drawDevChar(ctx, 446, 82, 0.72, blink);
+    }
+
     drawPanel(ctx, 18, 18, 430, 104, "rgba(9, 13, 31, 0.82)", "#53d7ff");
     drawText(ctx, truncateText(`${this.level.title} - ${patch.headline}`, 32), 34, 44, 20, "#ffffff", "bold");
     drawWrappedText(ctx, patch.note, 34, 68, 386, 16, "#cde9ff");
@@ -1503,6 +1553,128 @@ export class Game {
     drawText(ctx, `${formatTime(progress?.bestTime)}`, x + 180, y + 53, 11, "#cde9ff", "bold");
   }
 
+  // Pixel-art developer character centered at (cx, cy), scale factor s
+  private drawDevChar(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, blink: boolean): void {
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Body (torso) — hoodie
+    ctx.fillStyle = "#4a6fa5";
+    ctx.fillRect(-10 * s, -18 * s, 20 * s, 22 * s);
+
+    // Arms
+    ctx.fillStyle = "#4a6fa5";
+    ctx.fillRect(-16 * s, -16 * s, 6 * s, 14 * s);
+    ctx.fillRect( 10 * s, -16 * s, 6 * s, 14 * s);
+
+    // Left hand holds coffee cup
+    ctx.fillStyle = "#e8c87a";
+    ctx.fillRect(-17 * s, -4 * s, 5 * s, 7 * s);
+    ctx.fillStyle = "#7c3f22";
+    ctx.fillRect(-16 * s, -3 * s, 3 * s, 5 * s);
+
+    // Legs
+    ctx.fillStyle = "#2a3a5a";
+    ctx.fillRect(-9 * s, 4 * s, 7 * s, 12 * s);
+    ctx.fillRect( 2 * s, 4 * s, 7 * s, 12 * s);
+
+    // Shoes
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(-10 * s, 14 * s, 9 * s, 4 * s);
+    ctx.fillRect( 1 * s, 14 * s, 9 * s, 4 * s);
+
+    // Head
+    ctx.fillStyle = "#f4c68a";
+    ctx.fillRect(-9 * s, -36 * s, 18 * s, 18 * s);
+
+    // Hard hat
+    ctx.fillStyle = "#ffdc3f";
+    ctx.fillRect(-10 * s, -38 * s, 20 * s, 5 * s);
+    ctx.fillRect(-6 * s, -43 * s, 12 * s, 6 * s);
+
+    // Eyes
+    ctx.fillStyle = "#111827";
+    if (blink) {
+      ctx.fillRect(-6 * s, -28 * s, 4 * s, 1 * s);
+      ctx.fillRect( 2 * s, -28 * s, 4 * s, 1 * s);
+    } else {
+      ctx.fillRect(-6 * s, -30 * s, 4 * s, 4 * s);
+      ctx.fillRect( 2 * s, -30 * s, 4 * s, 4 * s);
+      // pupils
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(-5 * s, -29 * s, 2 * s, 2 * s);
+      ctx.fillRect( 3 * s, -29 * s, 2 * s, 2 * s);
+    }
+
+    // Mouth — slight smile
+    ctx.fillStyle = "#c47a4a";
+    ctx.fillRect(-4 * s, -22 * s, 8 * s, 2 * s);
+    ctx.fillRect(-5 * s, -23 * s, 2 * s, 2 * s);
+    ctx.fillRect( 3 * s, -23 * s, 2 * s, 2 * s);
+
+    ctx.restore();
+  }
+
+  private drawDevDialog(ctx: CanvasRenderingContext2D): void {
+    const patch = this.currentPatch();
+    const line = this.devDialogLines[this.devDialogSlide] ?? "";
+    const isLast = this.devDialogSlide >= this.devDialogLines.length - 1;
+    const blink = Math.floor(performance.now() / 500) % 4 !== 0;
+
+    // Dark backdrop
+    ctx.fillStyle = "rgba(6,9,24,0.88)";
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    // Panel
+    drawPanel(ctx, 110, 140, 740, 260, "rgba(10,15,36,0.97)", "#4a6fa5");
+
+    // Patch badge top-right of panel
+    drawTextPill(ctx, `PATCH ${patch.version}`, 710, 170, "#111827", severityColor(patch.severity));
+
+    // Dev character — right side of panel
+    const charX = 740;
+    const charY = 310;
+    this.drawDevChar(ctx, charX, charY, 2.2, blink);
+
+    // Speech bubble — left of character
+    const bx = 128, by = 158, bw = 550, bh = 158;
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    ctx.strokeStyle = "#4a6fa5";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 12);
+    ctx.fill();
+    ctx.stroke();
+    // Bubble tail pointing right toward character
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    ctx.strokeStyle = "#4a6fa5";
+    ctx.beginPath();
+    ctx.moveTo(bx + bw, by + bh / 2 - 10);
+    ctx.lineTo(bx + bw + 18, by + bh / 2);
+    ctx.lineTo(bx + bw, by + bh / 2 + 10);
+    ctx.fill();
+
+    // Dev name label
+    drawText(ctx, "DEV", bx + 16, by + 26, 13, "#4a6fa5", "bold");
+
+    // Dialog text
+    drawWrappedText(ctx, line, bx + 16, by + 50, bw - 32, 20, "#ffffff");
+
+    // Slide dots
+    for (let i = 0; i < this.devDialogLines.length; i++) {
+      ctx.fillStyle = i === this.devDialogSlide ? "#ffdc3f" : "#3a4a6a";
+      ctx.beginPath();
+      ctx.arc(bx + bw / 2 - (this.devDialogLines.length - 1) * 10 + i * 20, by + bh - 18, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Continue hint — pulsing
+    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 350);
+    ctx.globalAlpha = pulse;
+    drawText(ctx, isLast ? "▶  TAP TO SHIP PATCH" : "▶  TAP TO CONTINUE", VIEW_W / 2 - 10, 370, 14, "#87ffc4", "bold");
+    ctx.globalAlpha = 1;
+  }
+
   private drawPatchIntro(): void {
     const ctx = this.ctx;
     const patch = this.currentPatch();
@@ -1575,6 +1747,31 @@ export class Game {
     drawText(ctx, "R replay   Enter continue release train", 258, nextY, 15, "#9fc7ff", "bold");
     this.hot(210, nextY - 18, 210, 26, () => { this.resetLevel(); this.startLevelIntro(); this.audio.play("restart"); });
     this.hot(420, nextY - 18, 330, 26, () => this.advanceLevel());
+
+    // Dev character with joke bubble at bottom-right of complete panel
+    const blink = Math.floor(performance.now() / 500) % 8 !== 0;
+    const devX = 820, devY = this.bonusChallengeActive ? 440 : 420;
+    this.drawDevChar(ctx, devX, devY, 1.6, blink);
+    // Small speech bubble to the left of dev
+    const joke = patch.devLines?.[patch.devLines.length - 1] ?? patch.joke;
+    const jbx = 568, jby = devY - 52, jbw = 218, jbh = 48;
+    ctx.fillStyle = "rgba(10,15,36,0.92)";
+    ctx.strokeStyle = medalColor(medal);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(jbx, jby, jbw, jbh, 8);
+    ctx.fill();
+    ctx.stroke();
+    // Tail pointing right
+    ctx.fillStyle = "rgba(10,15,36,0.92)";
+    ctx.strokeStyle = medalColor(medal);
+    ctx.beginPath();
+    ctx.moveTo(jbx + jbw, jby + jbh / 2 - 6);
+    ctx.lineTo(jbx + jbw + 12, jby + jbh / 2);
+    ctx.lineTo(jbx + jbw, jby + jbh / 2 + 6);
+    ctx.fill();
+    ctx.stroke();
+    drawWrappedText(ctx, joke, jbx + 10, jby + 18, jbw - 18, 14, "#fff5d6");
   }
 
   private drawWinScreen(): void {

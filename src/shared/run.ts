@@ -31,6 +31,7 @@ export interface LevelPatch {
   joke: string;
   severity: PatchSeverity;
   targetTime: number;
+  devLines: string[];
 }
 
 export interface PatchRun {
@@ -48,7 +49,7 @@ export interface PatchRun {
   gameOverSummary: string;
 }
 
-export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "joke" | "severity">> = [
+export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines">> = [
   { levelId: 1, version: "1.0", modifier: "base", targetTime: 24 },
   { levelId: 2, version: "1.1", modifier: "jump_nerf", targetTime: 30 },
   { levelId: 3, version: "1.2", modifier: "coin_spike_magnet", targetTime: 34 },
@@ -81,186 +82,216 @@ export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "jok
   { levelId: 30, version: "3.9", modifier: "finale_combo", targetTime: 92 },
 ];
 
-const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "severity">> = [
+const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines">> = [
   {
     headline: "Everything works",
     note: "The release manager smiles. That cannot last.",
     joke: "Known issue: optimism detected.",
     severity: "stable",
+    devLines: ["Hey! Welcome to the release train. Collect coins, dodge spikes, reach the exit.", "Simple stuff. We'd never ship anything complicated. Anyway — here's Patch 1.0."],
   },
   {
     headline: "Jump height reduced for balance",
     note: "Vertical ambition has been identified as an exploit.",
     joke: "Please keep all dreams closer to the ground.",
     severity: "minor",
+    devLines: ["So... playtesting flagged jumping as overpowered. We had to nerf it.", "Don't look at me like that. The platforms are still reachable. Probably."],
   },
   {
     headline: "Coins now attract spikes",
     note: "The economy is finally working as designed.",
     joke: "Every purchase now includes consequences.",
     severity: "major",
+    devLines: ["Okay this one wasn't my idea. Revenue wanted coins to feel more 'engaging.'", "The spikes are just... very engaged. Good luck out there."],
   },
   {
     headline: "Gravity rotated 90 degrees",
     note: "Players requested a fresh perspective. Legal approved this wording.",
     joke: "Side effects may include sideways effects.",
     severity: "critical",
+    devLines: ["Fresh perspective. That's what legal called it."],
   },
   {
     headline: "Platforms now have durability",
     note: "Standing still is no longer part of the core fantasy.",
     joke: "The floor has started enforcing deadlines.",
     severity: "major",
+    devLines: ["The floor now has feelings. And a timer."],
   },
   {
     headline: "The exit now charges a processing fee",
     note: "A tiny toll has been added for your convenience.",
     joke: "Convenience fees remain deeply convenient for the exit.",
     severity: "minor",
+    devLines: ["Monetization asked for one small change. It's fine."],
   },
   {
     headline: "Friction removed for performance",
     note: "Stopping was taking measurable CPU time.",
     joke: "Momentum is now a stakeholder.",
     severity: "major",
+    devLines: ["Stopping is expensive. We cut it."],
   },
   {
     headline: "Builds are now asynchronous",
     note: "Some platforms may resolve later. Or earlier. Mostly later.",
     joke: "Await platform; regret platform.",
     severity: "critical",
+    devLines: ["The platforms ship when they're ready."],
   },
   {
     headline: "Rollback button added",
     note: "It works briefly, which is technically a feature.",
     joke: "The old bug misses you too.",
     severity: "rollback",
+    devLines: ["We added undo. It's temporary. Like most things."],
   },
   {
     headline: "Exit relocated under load",
     note: "The destination is elastic during peak traffic.",
     joke: "If the exit moves, ship faster.",
     severity: "critical",
+    devLines: ["The exit is elastic now. Just... keep moving."],
   },
   {
     headline: "Everything is stable now",
     note: "All previous fixes have been reintroduced in one confidence-building bundle.",
     joke: "Stability has been defined as all errors happening together.",
     severity: "critical",
+    devLines: ["We combined the fixes. All of them. At once."],
   },
   {
     headline: "Map boundary expanded",
     note: "The level footprint now exceeds the original specification. Scroll to explore.",
     joke: "Out of viewport, out of mind.",
     severity: "minor",
+    devLines: ["Scope crept. The map is wider now."],
   },
   {
     headline: "Vertical scope approved",
     note: "Progress now requires upward mobility. The exit has been promoted.",
     joke: "What goes up has not been nerfed. Yet.",
     severity: "major",
+    devLines: ["The exit got promoted. Several floors up."],
   },
   {
     headline: "Platforms migrated to async delivery",
     note: "Infrastructure components are now in transit. Timing is a feature.",
     joke: "Stand still and the floor leaves you.",
     severity: "major",
+    devLines: ["Infrastructure is in motion. Stay light."],
   },
   {
     headline: "Lateral air resistance enabled",
     note: "A persistent headwind has been introduced to reduce leftward throughput.",
     joke: "The wind is not a bug. It is a stakeholder.",
     severity: "critical",
+    devLines: ["The wind has a roadmap. You're not on it."],
   },
   {
     headline: "Support tickets now spawn platforms",
     note: "The escalation queue has created several convenient ledges.",
     joke: "Every ticket is load-bearing until closed.",
     severity: "minor",
+    devLines: ["Good news: the backlog is structural now."],
   },
   {
     headline: "Jump height reduced again for consistency",
     note: "The previous nerf has been normalized across morale.",
     joke: "Small hops are now part of the brand.",
     severity: "major",
+    devLines: ["Second nerf. For consistency."],
   },
   {
     headline: "Coin telemetry linked to hazards",
     note: "Revenue signals now notify nearby spikes with enthusiasm.",
     joke: "Analytics finally became actionable.",
     severity: "critical",
+    devLines: ["Analytics are fully actionable now. Very actionable."],
   },
   {
     headline: "Platforms now honor async standups",
     note: "Some ledges may briefly disappear to provide status updates.",
     joke: "The floor is in another meeting.",
     severity: "major",
+    devLines: ["Some platforms are currently in standup."],
   },
   {
     headline: "Exit now load-balances itself",
     note: "The destination may relocate to improve throughput optics.",
     joke: "Try not to optimize against the door.",
     severity: "critical",
+    devLines: ["The exit optimizes itself. Stay flexible."],
   },
   {
     headline: "World width doubled for enterprise",
     note: "The release train now includes scenic horizontal sprawl.",
     joke: "Scope creep has a parallax layer.",
     severity: "major",
+    devLines: ["Enterprise tier. Twice as wide."],
   },
   {
     headline: "Vertical integration completed",
     note: "The exit has been promoted several floors above reason.",
     joke: "Climb the org chart carefully.",
     severity: "major",
+    devLines: ["The org chart goes up. So does the exit."],
   },
   {
     headline: "Platform lifetime budgets enforced",
     note: "Standing still now spends infrastructure credits.",
     joke: "The floor passed a cost review.",
     severity: "critical",
+    devLines: ["Idle platforms cost money. Keep moving."],
   },
   {
     headline: "Moving platforms adopted agile delivery",
     note: "The route still exists, but its sprint velocity has opinions.",
     joke: "Please align with the ledge roadmap.",
     severity: "major",
+    devLines: ["The platforms are agile now. Match their velocity."],
   },
   {
     headline: "Wind tunnel added for performance testing",
     note: "The environment now pushes back against confident movement.",
     joke: "Resistance is measurable and billable.",
     severity: "major",
+    devLines: ["The second wind tunnel. Stronger this time."],
   },
   {
     headline: "Rollback tokens require deliberate trust",
     note: "Temporary safety is available, but only if you grab it first.",
     joke: "The undo button has a cooldown and a lawyer.",
     severity: "rollback",
+    devLines: ["Undo is back. Grab it before you need it."],
   },
   {
     headline: "Exit fee adjusted for premium routing",
     note: "The door accepts coins, apologies, and very little feedback.",
     joke: "Shipping is free. Arriving costs extra.",
     severity: "minor",
+    devLines: ["Premium door. Collect enough coins."],
   },
   {
     headline: "Gravity rotation reissued",
     note: "The axis migration is back with cleaner paperwork.",
     joke: "Sideways remains technically forward.",
     severity: "critical",
+    devLines: ["The axis migration is back. Cleaner paperwork this time."],
   },
   {
     headline: "Friction removed from the release notes",
     note: "Momentum is expected to resolve itself before launch.",
     joke: "Stopping is now a stretch goal.",
     severity: "major",
+    devLines: ["No friction. Not in the game, not in the notes."],
   },
   {
     headline: "Final final stability bundle",
     note: "All known fixes have been combined into one persuasive incident.",
     joke: "Stable means every bug is reproducible.",
     severity: "critical",
+    devLines: ["Everything. All at once. Final patch."],
   },
 ];
 
@@ -277,12 +308,18 @@ export const runJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["headline", "note", "joke", "severity"],
+        required: ["headline", "note", "joke", "severity", "devLines"],
         properties: {
           headline: { type: "string", minLength: 4, maxLength: 54 },
           note: { type: "string", minLength: 8, maxLength: 120 },
           joke: { type: "string", minLength: 8, maxLength: 90 },
           severity: { type: "string", enum: ["stable", "minor", "major", "critical", "rollback"] },
+          devLines: {
+            type: "array",
+            minItems: 1,
+            maxItems: 2,
+            items: { type: "string", minLength: 8, maxLength: 100 },
+          },
         },
       },
     },
@@ -377,6 +414,7 @@ export function sanitizeRun(
         note: cleanText(fromAi.note, fallbackPatch.note, 120),
         joke: cleanText(fromAi.joke, fallbackPatch.joke, 90),
         severity: cleanSeverity(fromAi.severity, fallbackPatch.severity),
+        devLines: cleanDevLines(fromAi.devLines, fallbackPatch.devLines),
       };
     }),
     finale: {
@@ -386,6 +424,12 @@ export function sanitizeRun(
     recapPrompts: cleanPromptList(data.recapPrompts, fallback.recapPrompts),
     gameOverSummary: cleanText(data.gameOverSummary, fallback.gameOverSummary, 110),
   };
+}
+
+function cleanDevLines(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const lines = value.map((v) => cleanText(v, "", 100)).filter((v) => v.length >= 8).slice(0, 2);
+  return lines.length >= 1 ? lines : fallback;
 }
 
 function cleanPromptList(value: unknown, fallback: string[]): string[] {
