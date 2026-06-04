@@ -54,7 +54,7 @@ test("loads and starts a playable run", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-bonus-challenge", "active");
 });
 
-test("supports judge highlights, Chapter 2 intro, and double-jump unlock state", async ({ page }) => {
+test("supports judge Exhibition, Chapter 2 intro, and double-jump unlock state", async ({ page }) => {
   await page.route("**/api/run", async (route) => {
     await route.fulfill({
       status: 200,
@@ -81,11 +81,14 @@ test("supports judge highlights, Chapter 2 intro, and double-jump unlock state",
   expect(afterUnlock.doubleJumpUnlocked).toBe(true);
   await expect(page.locator("body")).toHaveAttribute("data-double-jump", "unlocked");
 
-  const highlightStart = await page.evaluate(() => window.__patchNotesDebug!.startHighlights());
-  expect(highlightStart.highlightRunActive).toBe(true);
+  const exhibitionIntro = await page.evaluate(() => window.__patchNotesDebug!.startExhibition());
+  expect(exhibitionIntro.highlightRunActive).toBe(true);
+  expect(exhibitionIntro.mode).toBe("exhibitionIntro");
+  await expect(page.locator("body")).toHaveAttribute("data-game-state", "exhibitionIntro");
+  await page.keyboard.press("Enter");
   await expect(page.locator("body")).toHaveAttribute("data-highlight-run", "active");
 
-  for (const expectedLevel of [3, 4, 30, 33, 40]) {
+  for (const expectedLevel of [3, 4, 30, 33, 40, 49, 55]) {
     const current = await page.evaluate(() => window.__patchNotesDebug!.snapshot());
     expect(current.level).toBe(expectedLevel);
     await page.evaluate(() => window.__patchNotesDebug!.completeLevel(3));

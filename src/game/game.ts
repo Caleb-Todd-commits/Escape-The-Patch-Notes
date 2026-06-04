@@ -48,6 +48,7 @@ type GameMode =
   | "loading"
   | "title"
   | "releaseBoard"
+  | "exhibitionIntro"
   | "devDialog"
   | "chapterIntro"
   | "levelIntro"
@@ -154,6 +155,7 @@ interface DebugSnapshot {
 interface PatchNotesDebug {
   snapshot: () => DebugSnapshot;
   startLevel: (levelNumber: number) => DebugSnapshot;
+  startExhibition: () => DebugSnapshot;
   startHighlights: () => DebugSnapshot;
   completeLevel: (seconds?: number) => DebugSnapshot;
   collectReport: () => DebugSnapshot;
@@ -176,9 +178,10 @@ interface Bindings {
 
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
 const SETTINGS_ROWS = 8; // name, left, right, jump, pause, touch, game select, factory reset
-const CHAPTER_TWO_START_INDEX = 30;
-const HIGHLIGHT_SEQUENCE = [2, 3, 29, 32, 39, 49, 54];
-const JUDGE_HIGHLIGHTS = HIGHLIGHT_SEQUENCE;
+const CHAPTER_TWO_START_INDEX = Math.max(0, levels.findIndex((level) => level.chapter === "production_floor"));
+const EXHIBITION_SEQUENCE = [2, 3, 29, 32, 39, 48, 54];
+const HIGHLIGHT_SEQUENCE = EXHIBITION_SEQUENCE;
+const JUDGE_HIGHLIGHTS = EXHIBITION_SEQUENCE;
 
 const VIEW_W = 960;
 const VIEW_H = 540;
@@ -322,7 +325,7 @@ export class Game {
         return;
       }
 
-      if (event.code === "Escape" && this.mode === "releaseBoard") {
+      if (event.code === "Escape" && (this.mode === "releaseBoard" || this.mode === "exhibitionIntro")) {
         this.setMode("title");
         return;
       }
@@ -337,6 +340,12 @@ export class Game {
 
       if (event.code === "KeyB" && this.mode !== "playing" && this.mode !== "loading") {
         this.setMode("releaseBoard");
+        return;
+      }
+
+      if (event.code === "KeyH" && this.mode === "title") {
+        this.startExhibitionRun();
+        this.audio.play("start");
         return;
       }
 
@@ -369,6 +378,11 @@ export class Game {
 
         if (this.mode === "chapterIntro") {
           this.advanceChapterIntro();
+          return;
+        }
+
+        if (this.mode === "exhibitionIntro") {
+          this.beginExhibition();
           return;
         }
 
@@ -429,6 +443,10 @@ export class Game {
       }
       if (this.mode === "chapterIntro") {
         this.advanceChapterIntro();
+        return;
+      }
+      if (this.mode === "exhibitionIntro") {
+        this.beginExhibition();
         return;
       }
       const rect = this.canvas.getBoundingClientRect();
@@ -1143,8 +1161,32 @@ export class Game {
   }
 
   private startHighlightRun(): void {
-    this.startRunAt(HIGHLIGHT_SEQUENCE[0], { highlight: true, highlightStep: 0 });
-    this.toast("Judge highlights route");
+    this.startExhibitionRun();
+  }
+
+  private startExhibitionRun(): void {
+    this.levelIndex = EXHIBITION_SEQUENCE[0];
+    this.boardSelection = this.levelIndex;
+    this.highlightRunActive = true;
+    this.highlightStep = 0;
+    this.chapterIntroShown = false;
+    this.totalCoins = 0;
+    this.totalReports = 0;
+    this.deaths = 0;
+    this.levelDeaths = 0;
+    this.results = [];
+    this.particles = [];
+    this.runStartedAt = performance.now();
+    this.runPausedMs = 0;
+    this.runPauseStart = 0;
+    this.resetLevel();
+    this.setMode("exhibitionIntro");
+    this.toast("Judge exhibition route");
+  }
+
+  private beginExhibition(): void {
+    this.startRunAt(EXHIBITION_SEQUENCE[0], { highlight: true, highlightStep: 0 });
+    this.toast("Judge exhibition route");
   }
 
   private handleBoardInput(code: string): void {
@@ -1487,6 +1529,12 @@ export class Game {
       return;
     }
 
+    if (this.mode === "exhibitionIntro") {
+      this.drawExhibitionIntro(ctx, time);
+      ctx.restore();
+      return;
+    }
+
     if (this.mode === "settings") {
       this.drawSettings();
       ctx.restore();
@@ -1506,7 +1554,12 @@ export class Game {
     }
 
     this.drawWorld(ctx, time);
-    this.drawHud(ctx, time);
+    if (this.shouldDrawHud()) {
+      this.drawHud(ctx, time);
+    }
+    if (this.shouldDimWorld()) {
+      this.drawModalScrim(ctx, this.modalScrimAlpha());
+    }
 
     if (this.mode === "title") {
       this.drawTitle();
@@ -1521,6 +1574,42 @@ export class Game {
     } else if (this.mode === "gameComplete") {
       this.drawWinScreen();
     }
+    ctx.restore();
+  }
+
+  private shouldDrawHud(): boolean {
+    return this.mode === "playing" || this.mode === "paused";
+  }
+
+  private shouldDimWorld(): boolean {
+    return this.mode === "title" ||
+      this.mode === "levelIntro" ||
+      this.mode === "paused" ||
+      this.mode === "levelComplete" ||
+      this.mode === "gameOver" ||
+      this.mode === "gameComplete";
+  }
+
+  private modalScrimAlpha(): number {
+    if (this.mode === "title") return 0.46;
+    if (this.mode === "paused") return 0.42;
+    if (this.mode === "levelIntro") return 0.55;
+    if (this.mode === "levelComplete") return 0.58;
+    if (this.mode === "gameOver") return 0.62;
+    if (this.mode === "gameComplete") return 0.68;
+    return 0.5;
+  }
+
+  private drawModalScrim(ctx: CanvasRenderingContext2D, alpha: number): void {
+    ctx.save();
+    ctx.fillStyle = `rgba(3, 7, 18, ${alpha})`;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    const vignette = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, 120, VIEW_W / 2, VIEW_H / 2, 560);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,0.38)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     ctx.restore();
   }
 
@@ -2232,27 +2321,27 @@ export class Game {
 
   private drawTitle(): void {
     const ctx = this.ctx;
-    drawPanel(ctx, 112, 106, 736, 330, "rgba(7, 10, 26, 0.9)", "#ffdc3f");
-    this.drawDevChar(ctx, 758, 252, 2.35, true, "confident");
+    drawSoftPanel(ctx, 112, 106, 736, 330, "rgba(7, 10, 26, 0.92)", "#ffdc3f");
+    this.drawAiChar(ctx, 758, 258, 2.28, true, "confident");
     drawText(ctx, "ESCAPE THE PATCH NOTES", 152, 168, 42, "#ffffff", "bold");
     drawText(ctx, "Chapter 2: The Production Floor is live.", 162, 204, 20, "#70f5ff", "bold");
     drawText(ctx, "A platformer slowly ruined by updates.", 162, 232, 17, "#87ffc4", "bold");
     drawText(ctx, this.run.finale.headline, 164, 274, 17, "#fff5d6", "bold");
-    drawWrappedText(ctx, this.run.finale.note, 164, 300, 520, 17, "#cde9ff");
+    drawWrappedText(ctx, this.run.finale.note, 164, 300, 500, 17, "#cde9ff");
     if (this.bestScore > 0) {
       drawText(ctx, `Best release score ${this.bestScore}`, 164, 340, 16, "#ffdc3f", "bold");
     }
     drawTextPill(ctx, "CHOOSE LEVEL", 360, 380, "#111827", "#ffdc3f");
     this.hot(190, 360, 340, 34, () => { this.setMode("releaseBoard"); this.audio.play("start"); });
-    drawTextPill(ctx, "START HIGHLIGHTS", 640, 380, "#111827", "#70f5ff");
+    drawTextPill(ctx, "START EXHIBITION", 640, 380, "#111827", "#70f5ff");
     this.hot(522, 360, 236, 34, () => {
-      this.startHighlightRun();
+      this.startExhibitionRun();
       this.audio.play("start");
     });
     if (this.run.source === "fallback") {
       drawTextPill(ctx, "DETERMINISTIC FALLBACK RUN", 384, 342, "#172033", "#ffdc3f");
     }
-    drawText(ctx, "Space quick-starts · S settings · B choose level · T touch controls", 164, 420, 13, "#cde9ff", "bold");
+    drawText(ctx, "Space quick-starts · H exhibition · S settings · B choose level · T touch controls", 164, 420, 13, "#cde9ff", "bold");
   }
 
   private drawReleaseBoard(): void {
@@ -2267,6 +2356,7 @@ export class Game {
     const pageFirstPatch = this.run.levels[range.start] ?? selectedPatch;
     const pageLastPatch = this.run.levels[range.end] ?? selectedPatch;
     const chapterOne = range.start < CHAPTER_TWO_START_INDEX;
+    const compactBoard = range.end - range.start + 1 > 10;
 
     drawPanel(ctx, 36, 30, 888, 488, "rgba(7, 10, 26, 0.92)", "#70f5ff");
     drawText(ctx, "CHOOSE LEVEL", 68, 78, 34, "#ffffff", "bold");
@@ -2278,11 +2368,11 @@ export class Game {
     drawText(ctx, `${golds}/${levels.length} gold`, 700, 62, 15, "#ffdc3f", "bold");
     drawText(ctx, `Best ${this.bestScore || "--"}`, 724, 84, 15, "#cde9ff", "bold");
     drawText(ctx, `${chapterLabelForLevel(levels[range.start])}  ·  Page ${range.page + 1}/${range.totalPages}: Patch ${pageFirstPatch.version}-${pageLastPatch.version}`, 68, 108, 16, "#fff5d6", "bold");
-    drawText(ctx, "Arrows select   Q/E chapter   H highlights   Enter deploy selected patch   Esc title", 68, 128, 12, "#9fc7ff", "bold");
+    drawText(ctx, "Start Exhibition from title   Arrows select   Q/E chapter   H exhibit picks   Enter deploy   Esc title", 68, 128, 12, "#9fc7ff", "bold");
 
     const canPrev = range.page > 0;
     const canNext = range.page < range.totalPages - 1;
-    if (chapterOne) {
+    if (chapterOne || compactBoard) {
       drawPanel(ctx, 812, 102, 38, 30, "rgba(0,0,0,0.32)", canPrev ? "#70f5ff" : "#40517f");
       drawText(ctx, "<", 826, 123, 17, canPrev ? "#70f5ff" : "#40517f", "bold");
       drawPanel(ctx, 858, 102, 38, 30, "rgba(0,0,0,0.32)", canNext ? "#70f5ff" : "#40517f");
@@ -2318,13 +2408,14 @@ export class Game {
       }
     }
 
-    const columns = chapterOne ? 5 : 2;
-    const cardW = chapterOne ? 158 : 356;
-    const cardH = chapterOne ? 44 : 58;
-    const startX = chapterOne ? 80 : 118;
+    const columns = boardColumnsForRange(range);
+    const compactGrid = compactBoard || columns >= 5;
+    const cardW = compactGrid ? 158 : 356;
+    const cardH = compactGrid ? 44 : 58;
+    const startX = compactGrid ? 80 : 118;
     const startY = chapterOne ? 146 : 146;
-    const gapX = chapterOne ? 10 : 20;
-    const gapY = chapterOne ? 8 : 8;
+    const gapX = compactGrid ? 10 : 20;
+    const gapY = 8;
 
     for (let index = range.start; index <= range.end; index += 1) {
       const level = levels[index];
@@ -2344,6 +2435,7 @@ export class Game {
         cardW,
         cardH,
         index === this.boardSelection,
+        JUDGE_HIGHLIGHTS.includes(index),
       );
       this.hot(cx, cy, cardW, cardH, () => {
         this.boardSelection = index;
@@ -2376,6 +2468,7 @@ export class Game {
     w: number,
     h: number,
     selected: boolean,
+    exhibit: boolean,
   ): void {
     const completed = Boolean(progress?.completed);
     const starred = Boolean(progress?.challengeCompleted);
@@ -2385,15 +2478,19 @@ export class Game {
     drawPanel(ctx, x, y, w, h, fill, stroke);
     if (h <= 48) {
       const status = starred ? "STAR" : completed ? "CLEAR" : "OPEN";
+      const topTag = exhibit ? "EXH" : progress?.bestMedal ? progress.bestMedal.slice(0, 3).toUpperCase() : "--";
       drawText(ctx, `${levelId}. ${patch.version}`, x + 8, y + 17, 13, selected ? "#ffdc3f" : "#ffffff", "bold");
       drawText(ctx, status, x + 8, y + 35, 11, starred ? "#ffdc3f" : completed ? "#87ffc4" : "#ff9aa7", "bold");
       drawText(ctx, truncateText(releaseBoardLabel(patch.modifier), 16), x + 58, y + 35, 10, "#cde9ff", "bold");
-      drawText(ctx, progress?.bestMedal ? progress.bestMedal.slice(0, 3).toUpperCase() : "--", x + w - 34, y + 17, 10, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
+      drawText(ctx, topTag, x + w - 34, y + 17, 10, exhibit ? "#ffdc3f" : progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
       return;
     }
 
     drawText(ctx, `${levelId}. ${patch.version}`, x + 10, y + 19, 14, selected ? "#ffdc3f" : "#ffffff", "bold");
     drawText(ctx, releaseBoardLabel(patch.modifier), x + 78, y + 19, 12, "#cde9ff", "bold");
+    if (exhibit) {
+      drawText(ctx, "EXHIBIT", x + w - 74, y + 19, 11, "#ffdc3f", "bold");
+    }
     drawText(ctx, starred ? "STARRED" : completed ? "CLEARED" : "UNSHIPPED", x + 10, y + 37, 12, starred ? "#ffdc3f" : completed ? "#87ffc4" : "#ff9aa7", "bold");
     drawText(ctx, starred ? "CHALLENGE DONE" : completed ? "CHALLENGE READY" : "CHALLENGE LOCKED", x + 90, y + 37, 12, starred ? "#ffdc3f" : completed ? "#ff9aa7" : "#9fc7ff", "bold");
     drawText(ctx, `${progress?.bestMedal?.toUpperCase() ?? "--"}`, x + 10, y + 53, 11, progress?.bestMedal ? medalColor(progress.bestMedal) : "#7c8dbb", "bold");
@@ -2572,6 +2669,139 @@ export class Game {
     ctx.restore();
   }
 
+  private drawAiChar(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, blink: boolean, mood: EngineerMood = "confident"): void {
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    const coreColor = mood === "worried" ? "#ffdc3f" : mood === "exhausted" ? "#ff4f81" : mood === "proud" ? "#87ffc4" : "#70f5ff";
+    ctx.shadowColor = coreColor;
+    ctx.shadowBlur = 10 * s;
+
+    const body = ctx.createLinearGradient(0, -12 * s, 0, 42 * s);
+    body.addColorStop(0, "#1b405a");
+    body.addColorStop(0.52, "#0e2238");
+    body.addColorStop(1, "#050b18");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.roundRect(-28 * s, -10 * s, 56 * s, 50 * s, 14 * s);
+    ctx.fill();
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 1.8 * s;
+    ctx.beginPath();
+    ctx.roundRect(-26 * s, -8 * s, 52 * s, 46 * s, 12 * s);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(112,245,255,0.18)";
+    ctx.beginPath();
+    ctx.roundRect(-18 * s, 2 * s, 36 * s, 18 * s, 5 * s);
+    ctx.fill();
+    ctx.fillStyle = coreColor;
+    for (let i = 0; i < 4; i += 1) {
+      ctx.fillRect((-13 + i * 8) * s, 28 * s, 4 * s, 4 * s);
+    }
+
+    ctx.shadowColor = coreColor;
+    ctx.shadowBlur = 14 * s;
+    const head = ctx.createLinearGradient(-22 * s, -64 * s, 22 * s, -20 * s);
+    head.addColorStop(0, "#203d64");
+    head.addColorStop(0.48, "#0d2037");
+    head.addColorStop(1, "#07101f");
+    ctx.fillStyle = head;
+    ctx.beginPath();
+    ctx.roundRect(-25 * s, -66 * s, 50 * s, 44 * s, 13 * s);
+    ctx.fill();
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 2 * s;
+    ctx.beginPath();
+    ctx.roundRect(-23 * s, -64 * s, 46 * s, 40 * s, 11 * s);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.strokeStyle = "rgba(112,245,255,0.32)";
+    ctx.lineWidth = 1.2 * s;
+    ctx.beginPath();
+    ctx.moveTo(-10 * s, -66 * s);
+    ctx.lineTo(-18 * s, -80 * s);
+    ctx.moveTo(10 * s, -66 * s);
+    ctx.lineTo(18 * s, -80 * s);
+    ctx.stroke();
+    ctx.fillStyle = coreColor;
+    ctx.beginPath();
+    ctx.arc(-19 * s, -82 * s, 3.4 * s, 0, Math.PI * 2);
+    ctx.arc(19 * s, -82 * s, 3.4 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(0,0,0,0.36)";
+    ctx.beginPath();
+    ctx.roundRect(-17 * s, -55 * s, 34 * s, 17 * s, 6 * s);
+    ctx.fill();
+    ctx.fillStyle = coreColor;
+    if (blink) {
+      if (mood === "worried") {
+        ctx.fillRect(-12 * s, -49 * s, 7 * s, 2.4 * s);
+        ctx.fillRect(5 * s, -49 * s, 7 * s, 2.4 * s);
+      } else if (mood === "exhausted") {
+        ctx.fillRect(-12 * s, -47 * s, 8 * s, 1.8 * s);
+        ctx.fillRect(4 * s, -47 * s, 8 * s, 1.8 * s);
+      } else {
+        ctx.beginPath();
+        ctx.roundRect(-13 * s, -51 * s, 9 * s, 5 * s, 2 * s);
+        ctx.roundRect(4 * s, -51 * s, 9 * s, 5 * s, 2 * s);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillRect(-12 * s, -48 * s, 8 * s, 1.5 * s);
+      ctx.fillRect(4 * s, -48 * s, 8 * s, 1.5 * s);
+    }
+
+    ctx.strokeStyle = coreColor;
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    if (mood === "worried") {
+      ctx.moveTo(-8 * s, -33 * s);
+      ctx.quadraticCurveTo(0, -37 * s, 8 * s, -33 * s);
+    } else if (mood === "exhausted") {
+      ctx.moveTo(-8 * s, -34 * s);
+      ctx.lineTo(8 * s, -34 * s);
+    } else {
+      ctx.moveTo(-9 * s, -35 * s);
+      ctx.quadraticCurveTo(0, -30 * s, 10 * s, -35 * s);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(112,245,255,0.36)";
+    ctx.lineWidth = 1 * s;
+    for (let y = -58; y <= -28; y += 10) {
+      ctx.beginPath();
+      ctx.moveTo(-20 * s, y * s);
+      ctx.lineTo(20 * s, y * s);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#08111f";
+    ctx.beginPath();
+    ctx.roundRect(-41 * s, -4 * s, 13 * s, 28 * s, 6 * s);
+    ctx.roundRect(28 * s, -4 * s, 13 * s, 28 * s, 6 * s);
+    ctx.fill();
+    ctx.strokeStyle = coreColor;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(112,245,255,0.28)";
+    ctx.beginPath();
+    ctx.roundRect(-7 * s, 42 * s, 14 * s, 11 * s, 4 * s);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  private drawGuideChar(ctx: CanvasRenderingContext2D, cx: number, cy: number, s: number, blink: boolean, mood: EngineerMood = "confident"): void {
+    if (this.level?.chapter === "production_floor") {
+      this.drawAiChar(ctx, cx, cy, s, blink, mood);
+    } else {
+      this.drawDevChar(ctx, cx, cy, s, blink, mood);
+    }
+  }
+
   private drawDevDialog(ctx: CanvasRenderingContext2D): void {
     const patch = this.currentPatch();
     const blink = Math.floor(performance.now() / 500) % 4 !== 0;
@@ -2681,7 +2911,7 @@ export class Game {
     drawText(ctx, "THE PRODUCTION FLOOR", 140, 178, 38, "#ffffff", "bold");
     drawWrappedText(
       ctx,
-      "The engineer moved the build into a sleek server facility. Everything is faster, smoother, brighter, and much more interested in deleting you.",
+      "The human engineer has handed the build to an AI release overseer. Everything is faster, smoother, brighter, and much more interested in deleting you.",
       140,
       216,
       480,
@@ -2691,9 +2921,9 @@ export class Game {
     );
 
     const cards = [
-      ["LASER GATES", "warning blink before lethal cycles"],
-      ["RAZOR RAILS", "moving blades with clean arcade hitboxes"],
-      ["DOUBLE JUMP", "unlocks after Patch 4.2"],
+      ["LASER GATES", "warns before firing"],
+      ["RAZOR RAILS", "moving blade routes"],
+      ["DOUBLE JUMP", "unlocks at Patch 4.2"],
     ];
     cards.forEach(([title, body], i) => {
       const x = 140 + i * 168;
@@ -2703,15 +2933,71 @@ export class Game {
     });
 
     const blink = Math.floor(time / 460) % 5 !== 0;
-    this.drawDevChar(ctx, 736, 338, 2.05, blink, "worried");
+    this.drawAiChar(ctx, 736, 338, 2.05, blink, "worried");
     drawTextPill(ctx, "ENTER TO DEPLOY", 480, 426, "#111827", "#70f5ff");
     this.hot(350, 406, 260, 34, () => this.advanceChapterIntro());
+  }
+
+  private drawExhibitionIntro(ctx: CanvasRenderingContext2D, time: number): void {
+    const sweep = (time / 14) % VIEW_W;
+    ctx.fillStyle = "rgba(3,7,18,0.95)";
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+    ctx.save();
+    ctx.globalAlpha = 0.62;
+    ctx.fillStyle = "rgba(255,220,63,0.10)";
+    for (let x = -120; x < VIEW_W + 160; x += 120) {
+      ctx.fillRect(x + ((time / 36) % 120), 0, 3, VIEW_H);
+    }
+    ctx.fillStyle = "rgba(112,245,255,0.10)";
+    ctx.fillRect(sweep - 22, 0, 6, VIEW_H);
+    ctx.fillStyle = "rgba(255,79,129,0.12)";
+    ctx.fillRect(sweep + 24, 0, 3, VIEW_H);
+    ctx.restore();
+
+    drawSoftPanel(ctx, 84, 62, 792, 418, "rgba(7, 10, 26, 0.96)", "#ffdc3f");
+    drawText(ctx, "JUDGE EXHIBITION", 130, 120, 38, "#ffffff", "bold");
+    drawText(ctx, "Seven curated patches. No filler.", 132, 160, 20, "#70f5ff", "bold");
+    drawWrappedText(
+      ctx,
+      "This route shows the joke, the mechanics, Chapter 2, double jump, and the finale without making judges clear all 55 levels first.",
+      132,
+      196,
+      512,
+      21,
+      "#cde9ff",
+      17,
+    );
+
+    const route = EXHIBITION_SEQUENCE
+      .map((index) => this.run.levels[index]?.version ?? String(index + 1))
+      .join("   ");
+    drawPanel(ctx, 132, 282, 512, 46, "rgba(12, 22, 42, 0.88)", "#70f5ff");
+    drawText(ctx, "EXHIBITION ROUTE", 150, 304, 12, "#70f5ff", "bold");
+    drawText(ctx, route, 150, 322, 15, "#fff5d6", "bold");
+
+    const cards = [
+      ["PATCH JOKES", "bad updates"],
+      ["ARCADE SKILL", "real hazards"],
+      ["AI OVERSEER", "Chapter 2 payoff"],
+    ];
+    cards.forEach(([title, body], i) => {
+      const x = 132 + i * 174;
+      drawPanel(ctx, x, 346, 154, 66, "rgba(12, 22, 42, 0.88)", i === 1 ? "#ffdc3f" : "#58ffd4");
+      drawText(ctx, title, x + 12, 370, 13, i === 1 ? "#ffdc3f" : "#70f5ff", "bold");
+      drawText(ctx, body, x + 12, 394, 13, "#fff5d6", "bold");
+    });
+
+    const blink = Math.floor(time / 460) % 5 !== 0;
+    this.drawAiChar(ctx, 746, 336, 2.1, blink, "proud");
+    drawTextPill(ctx, "ENTER  START EXHIBITION", 506, 448, "#111827", "#ffdc3f");
+    this.hot(340, 428, 332, 34, () => this.beginExhibition());
   }
 
   private drawPatchIntro(): void {
     const ctx = this.ctx;
     const patch = this.currentPatch();
-    drawPanel(ctx, 132, 116, 696, 300, "rgba(7, 10, 26, 0.92)", severityColor(patch.severity));
+    drawSoftPanel(ctx, 132, 116, 696, 300, "rgba(7, 10, 26, 0.94)", severityColor(patch.severity));
     const scanX = 132 + ((performance.now() / 12) % 696);
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fillRect(scanX, 118, 4, 296);
@@ -2729,14 +3015,14 @@ export class Game {
       "bold",
     );
     const blink = Math.floor(performance.now() / 500) % 5 !== 0;
-    this.drawDevChar(ctx, 746, 334, 1.25, blink, engineerMoodForPatch(patch.severity));
+    this.drawGuideChar(ctx, 746, 334, 1.25, blink, engineerMoodForPatch(patch.severity));
     drawTextPill(ctx, "ENTER TO SHIP", 480, 386, "#111827", severityColor(patch.severity));
     this.hot(350, 366, 260, 34, () => this.startPlaying(performance.now()));
   }
 
   private drawPausedScreen(): void {
     const ctx = this.ctx;
-    drawPanel(ctx, 226, 168, 508, 210, "rgba(8, 11, 28, 0.93)", "#70f5ff");
+    drawSoftPanel(ctx, 226, 168, 508, 210, "rgba(8, 11, 28, 0.94)", "#70f5ff");
     drawText(ctx, "Paused", 264, 222, 32, "#ffffff", "bold");
     drawText(ctx, "Esc continue · S settings · R restart", 264, 260, 14, "#cde9ff");
     drawText(ctx, `Move  ${keyLabel(this.bindings.left)} / ${keyLabel(this.bindings.right)}`, 264, 292, 13, "#9fc7ff");
@@ -2749,14 +3035,14 @@ export class Game {
   private drawGameOverScreen(): void {
     const ctx = this.ctx;
     const patch = this.currentPatch();
-    drawPanel(ctx, 150, 140, 660, 262, "rgba(7, 10, 26, 0.93)", "#ff4f81");
+    drawSoftPanel(ctx, 150, 140, 660, 262, "rgba(7, 10, 26, 0.95)", "#ff4f81");
     drawText(ctx, "GAME OVER", 200, 192, 36, "#ffffff", "bold");
     drawText(ctx, this.lastDeathReason || "Patch rejected", 200, 228, 16, "#ffdc3f", "bold");
     drawText(ctx, `${this.level.title} · ${this.deaths} run deaths`, 200, 252, 14, "#9fc7ff");
 
     // Dev character on the right side of the panel
     const blink = Math.floor(performance.now() / 500) % 3 !== 0;
-    this.drawDevChar(ctx, 756, 310, 1.8, blink, this.levelDeaths >= 3 ? "exhausted" : "worried");
+    this.drawGuideChar(ctx, 756, 310, 1.8, blink, this.levelDeaths >= 3 ? "exhausted" : "worried");
 
     // Death line — pick based on levelDeaths, cap at 120 chars
     const deathLines = patch.deathLines ?? [];
@@ -2801,7 +3087,7 @@ export class Game {
     const result = this.results[this.levelIndex];
     const medal = result?.medal ?? "shipped";
     const h = this.bonusChallengeActive ? 230 : 200;
-    drawPanel(ctx, 210, 166, 540, h, "rgba(8, 11, 28, 0.93)", medalColor(medal));
+    drawSoftPanel(ctx, 210, 166, 540, h, "rgba(8, 11, 28, 0.96)", medalColor(medal));
     drawText(ctx, "PATCH SHIPPED", 256, 222, 34, "#ffffff", "bold");
     drawText(ctx, `Patch ${patch.version}`, 258, 258, 18, "#cde9ff", "bold");
     drawText(ctx, medal.toUpperCase(), 420, 258, 22, medalColor(medal), "bold");
@@ -2840,14 +3126,14 @@ export class Game {
       drawJumpPip(ctx, 542, this.bonusChallengeActive ? 338 : 310, true);
     }
     const nextY = unlockVisible ? (this.bonusChallengeActive ? 388 : 360) : this.bonusChallengeActive ? 352 : 322;
-    drawText(ctx, this.highlightRunActive ? "R replay   Enter next highlight" : "R replay   Enter continue", 258, nextY, 15, "#9fc7ff", "bold");
+    drawText(ctx, this.highlightRunActive ? "R replay   Enter next exhibition level" : "R replay   Enter continue", 258, nextY, 15, "#9fc7ff", "bold");
     this.hot(210, nextY - 18, 210, 26, () => { this.resetLevel(); this.startLevelIntro(); this.audio.play("restart"); });
     this.hot(420, nextY - 18, 330, 26, () => this.advanceLevel());
 
     // Dev character with joke bubble at bottom-right of complete panel
     const blink = Math.floor(performance.now() / 500) % 8 !== 0;
     const devX = 820, devY = this.bonusChallengeActive ? 440 : 420;
-    this.drawDevChar(ctx, devX, devY, 1.6, blink, "proud");
+    this.drawGuideChar(ctx, devX, devY, 1.6, blink, "proud");
     // Joke bubble — auto-sized, capped at 120 chars
     const rawJoke = patch.devLines?.[patch.devLines.length - 1] ?? patch.joke;
     const joke = rawJoke.length > 120 ? rawJoke.slice(0, 117) + "…" : rawJoke;
@@ -2878,10 +3164,13 @@ export class Game {
     const ctx = this.ctx;
     const now = performance.now();
     const runPauseAdjust = this.runPauseStart > 0 ? now - this.runPauseStart : 0;
-    const totalSeconds = Math.max(0, (now - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000).toFixed(1);
+    const measuredSeconds = Math.max(0, (now - this.runStartedAt - this.runPausedMs - runPauseAdjust) / 1000);
     const completedResults = this.results.filter((result): result is LevelResult => Boolean(result));
+    const resultSeconds = completedResults.reduce((total, result) => total + result.seconds, 0);
+    const totalSecondsValue = this.highlightRunActive && resultSeconds > 0 ? resultSeconds : measuredSeconds;
+    const totalSeconds = totalSecondsValue.toFixed(1);
     const score = scoreRun({
-      seconds: Number(totalSeconds),
+      seconds: totalSecondsValue,
       deaths: this.deaths,
       coins: this.totalCoins,
       reports: this.totalReports,
@@ -2894,8 +3183,8 @@ export class Game {
     const grade = releaseGrade(score);
     const gradeColor = grade === "S" ? "#ffdc3f" : grade === "A" ? "#87ffc4" : grade === "B" ? "#cde9ff" : "#ff9a3d";
 
-    drawPanel(ctx, 54, 26, 852, 488, "rgba(7, 10, 26, 0.93)", "#87ffc4");
-    drawText(ctx, this.highlightRunActive ? "HIGHLIGHTS DEPLOYED" : "ALL PATCHES DEPLOYED", 100, 82, 36, "#ffffff", "bold");
+    drawSoftPanel(ctx, 54, 26, 852, 488, "rgba(7, 10, 26, 0.96)", "#87ffc4");
+    drawText(ctx, this.highlightRunActive ? "EXHIBITION COMPLETE" : "ALL PATCHES DEPLOYED", 100, 82, 36, "#ffffff", "bold");
 
     const starDenom = this.highlightRunActive ? HIGHLIGHT_SEQUENCE.length : levels.length;
     drawText(ctx, `Grade ${grade}`, 100, 122, 22, gradeColor, "bold");
@@ -2904,17 +3193,15 @@ export class Game {
     drawText(ctx, `Stars ${this.totalReports}/${starDenom}`, 700, 122, 16, "#ff9aa7", "bold");
     drawText(ctx, `Time ${totalSeconds}s   Deaths ${this.deaths}   Coins ${this.totalCoins}`, 100, 148, 15, "#cde9ff", "bold");
 
-    drawText(ctx, "Release Record", 100, 176, 14, "#ffffff", "bold");
+    drawText(ctx, this.highlightRunActive ? "Exhibition Route" : "Release Record", 100, 176, 14, "#ffffff", "bold");
     const columns = 5;
     const colW = 160;
     const gridX = 100;
     const gridY = 194;
     const rowH = 18;
-    for (let i = 0; i < this.results.length && i < levels.length; i++) {
-      const result = this.results[i];
-      if (!result) {
-        continue;
-      }
+    const recordResults = this.highlightRunActive ? completedResults : this.results.filter((result): result is LevelResult => Boolean(result));
+    for (let i = 0; i < recordResults.length && i < levels.length; i++) {
+      const result = recordResults[i];
       const col = i % columns;
       const row = Math.floor(i / columns);
       const rx = gridX + col * colW;
@@ -2926,22 +3213,30 @@ export class Game {
     }
 
     const stability = this.deaths === 0 && this.totalReports >= starDenom ? "stable, suspiciously" : this.deaths <= 3 ? "stable enough to demo" : "stable after several negotiations";
-    const failure = this.lastDeathReason || (this.deaths === 0 ? "No notable crashes. The engineer is unsettled." : "Unlabeled regression");
+    const productionReport = this.level?.chapter === "production_floor";
+    const failure = this.lastDeathReason || (this.deaths === 0 ? (productionReport ? "No notable crashes. The AI is suspicious." : "No notable crashes. The engineer is unsettled.") : "Unlabeled regression");
     const failureSummary = this.deaths === 0 ? "none logged" : truncateText(failure, 28);
-    const reportLines = [
-      `Engineer report: release is ${stability}.`,
-      `Stars ${this.totalReports}/${starDenom}. Deaths ${this.deaths}. Favorite failure: ${failureSummary}.`,
-      this.run.recapPrompts[0] ?? "The release notes say everything is fine. Nobody signed them.",
-    ];
+    const routeSummary = EXHIBITION_SEQUENCE.map((index) => this.run.levels[index]?.version ?? String(index + 1)).join(" -> ");
+    const reportLines = this.highlightRunActive
+      ? [
+          "AI exhibition report: seven curated patches deployed.",
+          `Route ${routeSummary}.`,
+          `Deaths ${this.deaths}. Favorite failure: ${failureSummary}.`,
+        ]
+      : [
+          `${productionReport ? "AI release report" : "Engineer report"}: release is ${stability}.`,
+          `Stars ${this.totalReports}/${starDenom}. Deaths ${this.deaths}. Favorite failure: ${failureSummary}.`,
+          this.run.recapPrompts[0] ?? "The release notes say everything is fine. Nobody signed them.",
+        ];
     let ry = 350;
     for (const line of reportLines) {
       drawText(ctx, truncateText(line, 66), 100, ry, 14, "#fff5d6");
       ry += 22;
     }
     const blink = Math.floor(now / 500) % 8 !== 0;
-    this.drawDevChar(ctx, 794, 382, 1.45, blink, this.deaths <= 1 ? "proud" : "exhausted");
+    this.drawGuideChar(ctx, 826, 408, 1.12, blink, this.deaths <= 1 ? "proud" : "exhausted");
 
-    drawText(ctx, this.shareUrl, 100, 414, 11, "#9fc7ff", "bold");
+    drawText(ctx, this.highlightRunActive ? "Choose Level opens every patch, including the full Production Floor finale." : this.shareUrl, 100, 414, 11, "#9fc7ff", "bold");
 
     drawTextPill(ctx, "R  NEW RUN", 228, 462, "#111827", "#ffdc3f");
     this.hot(116, 442, 224, 34, () => { this.startRunAt(0); this.audio.play("start"); });
@@ -2951,7 +3246,7 @@ export class Game {
 
   private drawCenteredPanel(title: string, subtitle: string): void {
     const ctx = this.ctx;
-    drawPanel(ctx, 260, 196, 440, 150, "rgba(8, 11, 28, 0.92)", "#70f5ff");
+    drawSoftPanel(ctx, 260, 196, 440, 150, "rgba(8, 11, 28, 0.94)", "#70f5ff");
     drawText(ctx, title, 298, 252, 30, "#ffffff", "bold");
     drawText(ctx, subtitle, 298, 292, 16, "#cde9ff");
   }
@@ -3233,6 +3528,10 @@ export class Game {
         this.startRunAt(levelNumber - 1);
         return this.debugSnapshot();
       },
+      startExhibition: () => {
+        this.startExhibitionRun();
+        return this.debugSnapshot();
+      },
       startHighlights: () => {
         this.startHighlightRun();
         return this.debugSnapshot();
@@ -3393,8 +3692,8 @@ function nextBoardPageStart(selection: number, totalLevels: number): number {
   return page === 0 ? 0 : CHAPTER_TWO_START_INDEX;
 }
 
-function boardColumnsForRange(range: { start: number }): number {
-  return range.start < CHAPTER_TWO_START_INDEX ? 5 : 2;
+function boardColumnsForRange(range: { start: number; end: number }): number {
+  return range.end - range.start + 1 > 10 ? 5 : 2;
 }
 
 function releaseBoardLabel(modifier: PatchModifier): string {
@@ -3534,6 +3833,15 @@ function drawPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.beginPath();
   ctx.roundRect(x + 8, y + 5, w - 16, 2, 1);
   ctx.fill();
+}
+
+function drawSoftPanel(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill: string, stroke: string): void {
+  ctx.save();
+  ctx.shadowColor = stroke;
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetY = 7;
+  drawPanel(ctx, x, y, w, h, fill, stroke);
+  ctx.restore();
 }
 
 function drawText(
