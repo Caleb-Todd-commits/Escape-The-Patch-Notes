@@ -22,6 +22,8 @@ const SYSTEM_PROMPT = [
   "For each level, write devLines: short lines spoken by the (slightly guilty, overworked) developer who shipped this patch.",
   "Levels 1-3 get 2 devLines each — a setup and a punchline. All other levels get exactly 1 short devLine.",
   "devLines are 1-2 sentences, casual, first-person, dry humor. The dev is responsible for all the chaos but stays upbeat.",
+  "For each level, also write deathLines: 2-3 short lines the dev says when the player dies on that level.",
+  "deathLines reference the specific patch mechanic that killed them. Dry, deadpan, 1 sentence each. No gore.",
 ].join(" ");
 
 export default async function handler(req: VercelRequestLike, res: VercelResponseLike): Promise<void> {

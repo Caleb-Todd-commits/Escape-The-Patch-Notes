@@ -56,7 +56,7 @@ describe("run schema helpers", () => {
     const levels = runJsonSchema.properties.levels;
     const item = levels.items;
 
-    expect(item.required).toEqual(["headline", "note", "joke", "severity", "devLines"]);
+    expect(item.required).toEqual(["headline", "note", "joke", "severity", "devLines", "deathLines"]);
     expect(item.properties).not.toHaveProperty("modifier");
     expect(item.properties).not.toHaveProperty("targetTime");
     expect(item.properties).not.toHaveProperty("levelId");

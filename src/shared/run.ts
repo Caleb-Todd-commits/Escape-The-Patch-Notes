@@ -32,6 +32,7 @@ export interface LevelPatch {
   severity: PatchSeverity;
   targetTime: number;
   devLines: string[];
+  deathLines: string[];
 }
 
 export interface PatchRun {
@@ -49,7 +50,7 @@ export interface PatchRun {
   gameOverSummary: string;
 }
 
-export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines">> = [
+export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines" | "deathLines">> = [
   { levelId: 1, version: "1.0", modifier: "base", targetTime: 24 },
   { levelId: 2, version: "1.1", modifier: "jump_nerf", targetTime: 30 },
   { levelId: 3, version: "1.2", modifier: "coin_spike_magnet", targetTime: 34 },
@@ -82,13 +83,14 @@ export const canonicalPatches: Array<Omit<LevelPatch, "headline" | "note" | "jok
   { levelId: 30, version: "3.9", modifier: "finale_combo", targetTime: 92 },
 ];
 
-const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines">> = [
+const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "severity" | "devLines" | "deathLines">> = [
   {
     headline: "Everything works",
     note: "The release manager smiles. That cannot last.",
     joke: "Known issue: optimism detected.",
     severity: "stable",
     devLines: ["Hey! Welcome to the release train. Collect coins, dodge spikes, reach the exit.", "Simple stuff. We'd never ship anything complicated. Anyway — here's Patch 1.0."],
+    deathLines: ["Look, spikes were in scope.", "That one's on me. Mostly.", "Unexpected behavior. Not a bug."],
   },
   {
     headline: "Jump height reduced for balance",
@@ -96,6 +98,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Please keep all dreams closer to the ground.",
     severity: "minor",
     devLines: ["So... playtesting flagged jumping as overpowered. We had to nerf it.", "Don't look at me like that. The platforms are still reachable. Probably."],
+    deathLines: ["The nerf was a bit much. Sorry.", "Vertical ambition detected. Rejected.", "Platform was reachable in testing. Smaller tester."],
   },
   {
     headline: "Coins now attract spikes",
@@ -103,6 +106,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Every purchase now includes consequences.",
     severity: "major",
     devLines: ["Okay this one wasn't my idea. Revenue wanted coins to feel more 'engaging.'", "The spikes are just... very engaged. Good luck out there."],
+    deathLines: ["Revenue called that a feature.", "The economy is working as designed.", "Coins now include terms and conditions."],
   },
   {
     headline: "Gravity rotated 90 degrees",
@@ -110,6 +114,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Side effects may include sideways effects.",
     severity: "critical",
     devLines: ["Fresh perspective. That's what legal called it."],
+    deathLines: ["Down is a social construct.", "That wall was supposed to be a floor.", "Lateral tombstone. Efficient."],
   },
   {
     headline: "Platforms now have durability",
@@ -117,6 +122,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The floor has started enforcing deadlines.",
     severity: "major",
     devLines: ["The floor now has feelings. And a timer."],
+    deathLines: ["Platform budget exceeded.", "You stood still. The floor had opinions.", "Time limit was a soft limit. Briefly."],
   },
   {
     headline: "The exit now charges a processing fee",
@@ -124,6 +130,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Convenience fees remain deeply convenient for the exit.",
     severity: "minor",
     devLines: ["Monetization asked for one small change. It's fine."],
+    deathLines: ["Insufficient funds. Exit declined.", "You needed four more coins.", "Premium death. Technically billable."],
   },
   {
     headline: "Friction removed for performance",
@@ -131,6 +138,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Momentum is now a stakeholder.",
     severity: "major",
     devLines: ["Stopping is expensive. We cut it."],
+    deathLines: ["Momentum carried you past the safe zone.", "Stopping was technically optional.", "Physics refactored. Results varied."],
   },
   {
     headline: "Builds are now asynchronous",
@@ -138,6 +146,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Await platform; regret platform.",
     severity: "critical",
     devLines: ["The platforms ship when they're ready."],
+    deathLines: ["Platform was pending resolution.", "You arrived before the floor did.", "async/await, mostly await."],
   },
   {
     headline: "Rollback button added",
@@ -145,6 +154,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The old bug misses you too.",
     severity: "rollback",
     devLines: ["We added undo. It's temporary. Like most things."],
+    deathLines: ["Rollback window expired.", "Token collected too late.", "Undo had a cooldown. It still does."],
   },
   {
     headline: "Exit relocated under load",
@@ -152,6 +162,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "If the exit moves, ship faster.",
     severity: "critical",
     devLines: ["The exit is elastic now. Just... keep moving."],
+    deathLines: ["The exit load-balanced away from you.", "Wrong exit. That one was deprecated.", "Destination moved mid-transit. Classic."],
   },
   {
     headline: "Everything is stable now",
@@ -159,6 +170,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Stability has been defined as all errors happening together.",
     severity: "critical",
     devLines: ["We combined the fixes. All of them. At once."],
+    deathLines: ["All previous bugs contributed equally.", "Stability incident. Fully reproducible.", "The bundle was confident. You were not."],
   },
   {
     headline: "Map boundary expanded",
@@ -166,6 +178,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Out of viewport, out of mind.",
     severity: "minor",
     devLines: ["Scope crept. The map is wider now."],
+    deathLines: ["Fell off the expanded edge.", "The new area needed more QA.", "Out of viewport. Out of luck."],
   },
   {
     headline: "Vertical scope approved",
@@ -173,6 +186,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "What goes up has not been nerfed. Yet.",
     severity: "major",
     devLines: ["The exit got promoted. Several floors up."],
+    deathLines: ["Upward mobility denied.", "The org chart was steeper than advertised.", "Exit was promoted. You were not."],
   },
   {
     headline: "Platforms migrated to async delivery",
@@ -180,6 +194,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Stand still and the floor leaves you.",
     severity: "major",
     devLines: ["Infrastructure is in motion. Stay light."],
+    deathLines: ["Platform resolved after impact.", "Infrastructure was in transit. So were you.", "Ledge arrived late. Apologies."],
   },
   {
     headline: "Lateral air resistance enabled",
@@ -187,6 +202,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The wind is not a bug. It is a stakeholder.",
     severity: "critical",
     devLines: ["The wind has a roadmap. You're not on it."],
+    deathLines: ["Wind-assisted spike. Efficient.", "The headwind has KPIs.", "Blown into a hazard. As designed."],
   },
   {
     headline: "Support tickets now spawn platforms",
@@ -194,6 +210,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Every ticket is load-bearing until closed.",
     severity: "minor",
     devLines: ["Good news: the backlog is structural now."],
+    deathLines: ["Ticket closed. Platform removed.", "That ledge was a known issue.", "Support escalated too late."],
   },
   {
     headline: "Jump height reduced again for consistency",
@@ -201,6 +218,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Small hops are now part of the brand.",
     severity: "major",
     devLines: ["Second nerf. For consistency."],
+    deathLines: ["Brand-consistent hop. Insufficient.", "Nerf applied retroactively.", "Consistent with previous failure."],
   },
   {
     headline: "Coin telemetry linked to hazards",
@@ -208,6 +226,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Analytics finally became actionable.",
     severity: "critical",
     devLines: ["Analytics are fully actionable now. Very actionable."],
+    deathLines: ["Analytics notified the spike in time.", "Revenue signal received. Spike responded.", "Hazard was data-driven."],
   },
   {
     headline: "Platforms now honor async standups",
@@ -215,6 +234,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The floor is in another meeting.",
     severity: "major",
     devLines: ["Some platforms are currently in standup."],
+    deathLines: ["Platform was in standup.", "Floor had a conflict. Reschedule.", "Ledge gave its update. Then left."],
   },
   {
     headline: "Exit now load-balances itself",
@@ -222,6 +242,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Try not to optimize against the door.",
     severity: "critical",
     devLines: ["The exit optimizes itself. Stay flexible."],
+    deathLines: ["Exit routed you to a spike.", "Load balancer selected suboptimal destination.", "The door had better options."],
   },
   {
     headline: "World width doubled for enterprise",
@@ -229,6 +250,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Scope creep has a parallax layer.",
     severity: "major",
     devLines: ["Enterprise tier. Twice as wide."],
+    deathLines: ["Fell off the enterprise edge.", "Scope crept into a hazard.", "Wide world. Narrow survival window."],
   },
   {
     headline: "Vertical integration completed",
@@ -236,6 +258,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Climb the org chart carefully.",
     severity: "major",
     devLines: ["The org chart goes up. So does the exit."],
+    deathLines: ["Org chart climb failed.", "Vertical integration rejected your application.", "Floor denied the promotion."],
   },
   {
     headline: "Platform lifetime budgets enforced",
@@ -243,6 +266,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The floor passed a cost review.",
     severity: "critical",
     devLines: ["Idle platforms cost money. Keep moving."],
+    deathLines: ["Credit exhausted. Platform deprecated.", "Stood still too long. Invoiced.", "Cost review concluded mid-jump."],
   },
   {
     headline: "Moving platforms adopted agile delivery",
@@ -250,6 +274,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Please align with the ledge roadmap.",
     severity: "major",
     devLines: ["The platforms are agile now. Match their velocity."],
+    deathLines: ["Missed the sprint.", "Platform velocity exceeded alignment.", "Ledge shipped without you."],
   },
   {
     headline: "Wind tunnel added for performance testing",
@@ -257,6 +282,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Resistance is measurable and billable.",
     severity: "major",
     devLines: ["The second wind tunnel. Stronger this time."],
+    deathLines: ["Performance test: failed.", "Wind resistance billed to the player.", "Confidence was the exploit."],
   },
   {
     headline: "Rollback tokens require deliberate trust",
@@ -264,6 +290,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "The undo button has a cooldown and a lawyer.",
     severity: "rollback",
     devLines: ["Undo is back. Grab it before you need it."],
+    deathLines: ["Token not collected. Condolences.", "Rollback declined. Terms not accepted.", "Safety was available. Briefly."],
   },
   {
     headline: "Exit fee adjusted for premium routing",
@@ -271,6 +298,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Shipping is free. Arriving costs extra.",
     severity: "minor",
     devLines: ["Premium door. Collect enough coins."],
+    deathLines: ["Insufficient coins. Door remained closed.", "Premium exit. Budget death.", "Fee was non-negotiable."],
   },
   {
     headline: "Gravity rotation reissued",
@@ -278,6 +306,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Sideways remains technically forward.",
     severity: "critical",
     devLines: ["The axis migration is back. Cleaner paperwork this time."],
+    deathLines: ["Paperwork was cleaner. Outcome was not.", "Axis re-migrated mid-fall.", "Sideways was technically downward."],
   },
   {
     headline: "Friction removed from the release notes",
@@ -285,6 +314,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Stopping is now a stretch goal.",
     severity: "major",
     devLines: ["No friction. Not in the game, not in the notes."],
+    deathLines: ["Momentum unresolved at time of impact.", "Stopping remains a stretch goal.", "Sliding into a spike is still a spike."],
   },
   {
     headline: "Final final stability bundle",
@@ -292,6 +322,7 @@ const fallbackCopy: Array<Pick<LevelPatch, "headline" | "note" | "joke" | "sever
     joke: "Stable means every bug is reproducible.",
     severity: "critical",
     devLines: ["Everything. All at once. Final patch."],
+    deathLines: ["All bugs confirmed reproducible.", "Final incident logged.", "Stability defined. Narrowly."],
   },
 ];
 
@@ -308,7 +339,7 @@ export const runJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["headline", "note", "joke", "severity", "devLines"],
+        required: ["headline", "note", "joke", "severity", "devLines", "deathLines"],
         properties: {
           headline: { type: "string", minLength: 4, maxLength: 54 },
           note: { type: "string", minLength: 8, maxLength: 120 },
@@ -318,6 +349,12 @@ export const runJsonSchema = {
             type: "array",
             minItems: 1,
             maxItems: 2,
+            items: { type: "string", minLength: 8, maxLength: 100 },
+          },
+          deathLines: {
+            type: "array",
+            minItems: 2,
+            maxItems: 3,
             items: { type: "string", minLength: 8, maxLength: 100 },
           },
         },
@@ -415,6 +452,7 @@ export function sanitizeRun(
         joke: cleanText(fromAi.joke, fallbackPatch.joke, 90),
         severity: cleanSeverity(fromAi.severity, fallbackPatch.severity),
         devLines: cleanDevLines(fromAi.devLines, fallbackPatch.devLines),
+        deathLines: cleanDeathLines(fromAi.deathLines, fallbackPatch.deathLines),
       };
     }),
     finale: {
@@ -429,6 +467,12 @@ export function sanitizeRun(
 function cleanDevLines(value: unknown, fallback: string[]): string[] {
   if (!Array.isArray(value)) return fallback;
   const lines = value.map((v) => cleanText(v, "", 100)).filter((v) => v.length >= 8).slice(0, 2);
+  return lines.length >= 1 ? lines : fallback;
+}
+
+function cleanDeathLines(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return fallback;
+  const lines = value.map((v) => cleanText(v, "", 100)).filter((v) => v.length >= 8).slice(0, 3);
   return lines.length >= 1 ? lines : fallback;
 }
 

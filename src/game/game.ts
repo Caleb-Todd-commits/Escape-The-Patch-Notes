@@ -135,7 +135,7 @@ interface Bindings {
 }
 
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
-const SETTINGS_ROWS = 7; // name, left, right, jump, pause, touch, game select
+const SETTINGS_ROWS = 8; // name, left, right, jump, pause, touch, game select, factory reset
 const RELEASE_BOARD_PAGE_SIZE = 10;
 
 const VIEW_W = 960;
@@ -185,6 +185,7 @@ export class Game {
   private devDialogSlide = 0;
   private devDialogLines: string[] = [];
   private devDialogProceed: (() => void) | null = null;
+  private resetConfirmPending = false;
   private particles: Particle[] = [];
   private shakeUntil = 0;
   private shakeMagnitude = 0;
@@ -1710,14 +1711,42 @@ export class Game {
 
   private drawGameOverScreen(): void {
     const ctx = this.ctx;
-    drawPanel(ctx, 176, 148, 608, 244, "rgba(7, 10, 26, 0.93)", "#ff4f81");
-    drawText(ctx, "GAME OVER", 228, 200, 36, "#ffffff", "bold");
-    drawText(ctx, this.lastDeathReason || "Patch rejected", 228, 238, 16, "#ffdc3f", "bold");
-    drawText(ctx, `${this.level.title} · Level ${this.levelIndex + 1}/${levels.length} · ${this.deaths} run deaths`, 228, 264, 14, "#9fc7ff");
-    drawWrappedText(ctx, this.run.gameOverSummary, 228, 290, 520, 16, "#cde9ff");
-    drawPanel(ctx, 346, 346, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
-    drawText(ctx, "Restart →", 358, 365, 13, "#ff4f81", "bold");
-    this.hot(346, 346, 148, 28, () => { this.resetLevel(); this.startLevelIntro(); });
+    const patch = this.currentPatch();
+    drawPanel(ctx, 150, 140, 660, 262, "rgba(7, 10, 26, 0.93)", "#ff4f81");
+    drawText(ctx, "GAME OVER", 200, 192, 36, "#ffffff", "bold");
+    drawText(ctx, this.lastDeathReason || "Patch rejected", 200, 228, 16, "#ffdc3f", "bold");
+    drawText(ctx, `${this.level.title} · ${this.deaths} run deaths`, 200, 252, 14, "#9fc7ff");
+
+    // Dev character on the right side of the panel
+    const blink = Math.floor(performance.now() / 500) % 3 !== 0;
+    this.drawDevChar(ctx, 756, 310, 1.8, blink);
+
+    // Death line speech bubble — picks based on levelDeaths for variety
+    const lines = patch.deathLines ?? [];
+    const deathLine = lines.length > 0
+      ? lines[Math.min(this.levelDeaths - 1, lines.length - 1)]
+      : this.run.gameOverSummary;
+    const bx = 168, by = 262, bw = 540, bh = 52;
+    ctx.fillStyle = "rgba(255,79,129,0.08)";
+    ctx.strokeStyle = "#ff4f81";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 8);
+    ctx.fill();
+    ctx.stroke();
+    // Bubble tail pointing right toward dev
+    ctx.fillStyle = "rgba(255,79,129,0.08)";
+    ctx.beginPath();
+    ctx.moveTo(bx + bw, by + bh / 2 - 6);
+    ctx.lineTo(bx + bw + 14, by + bh / 2);
+    ctx.lineTo(bx + bw, by + bh / 2 + 6);
+    ctx.fill();
+    ctx.stroke();
+    drawWrappedText(ctx, deathLine, bx + 12, by + 20, bw - 22, 16, "#ffffff");
+
+    drawPanel(ctx, 346, 360, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
+    drawText(ctx, "Restart →", 358, 379, 13, "#ff4f81", "bold");
+    this.hot(346, 360, 148, 28, () => { this.resetLevel(); this.startLevelIntro(); });
   }
 
   private drawLevelComplete(): void {
@@ -1922,13 +1951,17 @@ export class Game {
       }
       return;
     }
-    if (code === "Escape") { this.setMode(this.settingsPrevMode); return; }
+    if (code === "Escape") {
+      if (this.resetConfirmPending) { this.resetConfirmPending = false; return; }
+      this.setMode(this.settingsPrevMode);
+      return;
+    }
     if (this.settingsRow === 6) {
       if (code === "ArrowLeft")  { this.jumpToLevelValue = Math.max(1, this.jumpToLevelValue - 1); return; }
       if (code === "ArrowRight") { this.jumpToLevelValue = Math.min(levels.length, this.jumpToLevelValue + 1); return; }
     }
-    if (code === "ArrowUp")   { this.settingsRow = (this.settingsRow - 1 + SETTINGS_ROWS) % SETTINGS_ROWS; return; }
-    if (code === "ArrowDown") { this.settingsRow = (this.settingsRow + 1) % SETTINGS_ROWS; return; }
+    if (code === "ArrowUp")   { this.resetConfirmPending = false; this.settingsRow = (this.settingsRow - 1 + SETTINGS_ROWS) % SETTINGS_ROWS; return; }
+    if (code === "ArrowDown") { this.resetConfirmPending = false; this.settingsRow = (this.settingsRow + 1) % SETTINGS_ROWS; return; }
     if (code === "Enter" || code === "Space") this.activateSettingsRow();
   }
 
@@ -1943,6 +1976,22 @@ export class Game {
       case 6:
         this.startRunAt(this.jumpToLevelValue - 1);
         this.audio.play("start");
+        break;
+      case 7:
+        if (this.resetConfirmPending) {
+          // Confirmed — wipe all game data and reload
+          try {
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const k = localStorage.key(i);
+              if (k && k.startsWith("escapePatch")) keysToRemove.push(k);
+            }
+            keysToRemove.forEach((k) => localStorage.removeItem(k));
+          } catch {}
+          window.location.reload();
+        } else {
+          this.resetConfirmPending = true;
+        }
         break;
     }
   }
@@ -1975,11 +2024,11 @@ export class Game {
     const row = this.settingsRow;
     const rebinding = this.rebindingFor !== null;
 
-    drawPanel(ctx, 80, 26, 800, 488, "rgba(7, 10, 26, 0.95)", "#7767ff");
+    drawPanel(ctx, 80, 26, 800, 520, "rgba(7, 10, 26, 0.95)", "#7767ff");
     drawText(ctx, "SETTINGS", 118, 80, 30, "#ffffff", "bold");
     drawPanel(ctx, 746, 58, 112, 28, "rgba(0,0,0,0.4)", "#9fc7ff");
     drawText(ctx, "← Back", 758, 77, 13, "#9fc7ff", "bold");
-    this.hot(746, 58, 112, 28, () => this.setMode(this.settingsPrevMode));
+    this.hot(746, 58, 112, 28, () => { this.resetConfirmPending = false; this.setMode(this.settingsPrevMode); });
 
     // ── Player Name ──────────────────────────────────────────
     if (row === 0) {
@@ -2067,7 +2116,24 @@ export class Game {
     this.hot(400, 433, 24, 22, () => { this.jumpToLevelValue = Math.min(levels.length, jtl + 1); this.settingsRow = 6; });
     this.hot(324, 433, 72, 22, () => { this.settingsRow = 6; this.activateSettingsRow(); });
 
-    drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 494, 12, "rgba(156,199,255,0.4)");
+    // ── Factory Reset ─────────────────────────────────────────
+    const resetY = 476;
+    if (row === 7) {
+      ctx.fillStyle = "rgba(255,79,129,0.10)";
+      ctx.fillRect(98, resetY, 764, 34);
+    }
+    drawText(ctx, "Factory Reset", 118, resetY + 22, 14, row === 7 ? "#ff4f81" : "#cde9ff", "bold");
+    if (this.resetConfirmPending) {
+      drawPanel(ctx, 296, resetY + 4, 440, 24, "rgba(0,0,0,0.5)", "#ff4f81");
+      drawText(ctx, "Erase all progress? Enter to confirm · Esc to cancel", 304, resetY + 20, 12, "#ff9aa7", "bold");
+    } else {
+      drawPanel(ctx, 296, resetY + 4, 180, 24, "rgba(0,0,0,0.45)", row === 7 ? "#ff4f81" : "#40517f");
+      drawText(ctx, "Reset all progress", 304, resetY + 20, 12, row === 7 ? "#ff4f81" : "#7c8dbb", "bold");
+      if (row === 7) drawText(ctx, "Enter to reset", 490, resetY + 20, 11, "#7767ff");
+    }
+    this.hot(98, resetY, 764, 34, () => { this.settingsRow = 7; });
+
+    drawText(ctx, "↑ ↓  navigate     Enter  activate     Esc  back", 118, 524, 12, "rgba(156,199,255,0.4)");
   }
 
   private installDebugHooks(): void {
