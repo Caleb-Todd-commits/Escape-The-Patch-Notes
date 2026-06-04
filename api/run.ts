@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = process.env.OPENAI_MODEL || "gpt-5-mini";
+    const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
     const fixedOrder = canonicalPatches
       .map((patch) => `Level ${patch.levelId}: Patch ${patch.version}, ${patch.modifier}`)
       .join("; ");

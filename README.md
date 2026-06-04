@@ -93,7 +93,7 @@ The game works without the OpenAI API. To enable AI-generated run flavor on Verc
 
 ```bash
 OPENAI_API_KEY=your_server_side_key
-OPENAI_MODEL=gpt-5-mini
+OPENAI_MODEL=gpt-4.1-mini
 ```
 
 Do not commit real `.env` files, API keys, tokens, or secrets. The `.gitignore` already excludes `.env`.
