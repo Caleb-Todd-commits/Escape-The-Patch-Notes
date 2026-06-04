@@ -3194,11 +3194,12 @@ export class Game {
     drawText(ctx, `Time ${totalSeconds}s   Deaths ${this.deaths}   Coins ${this.totalCoins}`, 100, 148, 15, "#cde9ff", "bold");
 
     drawText(ctx, this.highlightRunActive ? "Exhibition Route" : "Release Record", 100, 176, 14, "#ffffff", "bold");
-    const columns = 5;
-    const colW = 160;
+    // Grid: 8 cols × up to 7 rows fits 55 results in 168px (gridY 194 → 362), leaving room for report at 368.
+    const columns = 8;
+    const colW = 104;
     const gridX = 100;
     const gridY = 194;
-    const rowH = 18;
+    const rowH = 16;
     const recordResults = this.highlightRunActive ? completedResults : this.results.filter((result): result is LevelResult => Boolean(result));
     for (let i = 0; i < recordResults.length && i < levels.length; i++) {
       const result = recordResults[i];
@@ -3206,10 +3207,9 @@ export class Game {
       const row = Math.floor(i / columns);
       const rx = gridX + col * colW;
       const ry = gridY + row * rowH;
-      drawText(ctx, result.patch, rx, ry, 13, "#9fc7ff", "bold");
-      drawText(ctx, result.medal.slice(0, 3).toUpperCase(), rx + 38, ry, 12, medalColor(result.medal), "bold");
-      drawText(ctx, `${result.seconds.toFixed(1)}s`, rx + 76, ry, 11, "#fff5d6");
-      if (result.challenge) drawText(ctx, "STAR", rx + 122, ry, 10, "#ffdc3f", "bold");
+      drawText(ctx, result.patch, rx, ry, 11, "#9fc7ff", "bold");
+      drawText(ctx, result.medal.slice(0, 3).toUpperCase(), rx + 32, ry, 10, medalColor(result.medal), "bold");
+      if (result.challenge) drawText(ctx, "★", rx + 58, ry, 10, "#ffdc3f", "bold");
     }
 
     const stability = this.deaths === 0 && this.totalReports >= starDenom ? "stable, suspiciously" : this.deaths <= 3 ? "stable enough to demo" : "stable after several negotiations";
@@ -3228,13 +3228,13 @@ export class Game {
           `Stars ${this.totalReports}/${starDenom}. Deaths ${this.deaths}. Favorite failure: ${failureSummary}.`,
           this.run.recapPrompts[0] ?? "The release notes say everything is fine. Nobody signed them.",
         ];
-    let ry = 350;
+    let ry = 330;
     for (const line of reportLines) {
-      drawText(ctx, truncateText(line, 66), 100, ry, 14, "#fff5d6");
-      ry += 22;
+      drawText(ctx, truncateText(line, 66), 100, ry, 13, "#fff5d6");
+      ry += 20;
     }
     const blink = Math.floor(now / 500) % 8 !== 0;
-    this.drawGuideChar(ctx, 826, 408, 1.12, blink, this.deaths <= 1 ? "proud" : "exhausted");
+    this.drawGuideChar(ctx, 826, 390, 1.12, blink, this.deaths <= 1 ? "proud" : "exhausted");
 
     drawText(ctx, this.highlightRunActive ? "Choose Level opens every patch, including the full Production Floor finale." : this.shareUrl, 100, 414, 11, "#9fc7ff", "bold");
 
@@ -3974,8 +3974,16 @@ function savePlayerName(name: string): void {
   try { localStorage.setItem(PLAYER_NAME_KEY, name); } catch {}
 }
 
+function isMobileUA(): boolean {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 function isTouchEnabled(): boolean {
-  try { return localStorage.getItem("escapePatchNotesTouch") === "true"; } catch { return false; }
+  try {
+    const stored = localStorage.getItem("escapePatchNotesTouch");
+    if (stored !== null) return stored === "true";
+    return isMobileUA();
+  } catch { return isMobileUA(); }
 }
 
 function hexLighter(hex: string, amount: number): string {
