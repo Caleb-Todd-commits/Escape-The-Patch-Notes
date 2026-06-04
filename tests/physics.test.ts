@@ -61,13 +61,14 @@ describe("platformer helpers", () => {
     expect(far).toEqual({ x: 0, y: 0 });
   });
 
-  it("ships forty levels with run metadata kept in lockstep", () => {
-    expect(levels).toHaveLength(40);
+  it("ships fifty-five levels with run metadata kept in lockstep", () => {
+    expect(levels).toHaveLength(55);
     expect(canonicalPatches).toHaveLength(levels.length);
     expect(levels[10]?.modifier).toBe("finale_combo");
     expect(levels[29]?.modifier).toBe("finale_combo");
     expect(levels[30]?.chapter).toBe("production_floor");
     expect(levels[39]?.modifier).toBe("production_finale");
+    expect(levels[54]?.modifier).toBe("production_finale");
   });
 
   it("hides one optional bug report in every level", () => {

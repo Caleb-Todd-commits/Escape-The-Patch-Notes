@@ -177,7 +177,7 @@ interface Bindings {
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
 const SETTINGS_ROWS = 8; // name, left, right, jump, pause, touch, game select, factory reset
 const CHAPTER_TWO_START_INDEX = 30;
-const HIGHLIGHT_SEQUENCE = [2, 3, 29, 32, 39];
+const HIGHLIGHT_SEQUENCE = [2, 3, 29, 32, 39, 49, 54];
 const JUDGE_HIGHLIGHTS = HIGHLIGHT_SEQUENCE;
 
 const VIEW_W = 960;

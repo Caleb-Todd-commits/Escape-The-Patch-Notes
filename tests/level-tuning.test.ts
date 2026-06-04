@@ -57,7 +57,7 @@ describe("level tuning", () => {
   it("adds a distinct production chapter with modern tech hazards", () => {
     const chapterTwo = levels.slice(30);
 
-    expect(chapterTwo).toHaveLength(10);
+    expect(chapterTwo).toHaveLength(25);
     expect(chapterTwo.every((level) => level.chapter === "production_floor")).toBe(true);
     expect(chapterTwo.some((level) => (level.laserGates?.length ?? 0) > 0)).toBe(true);
     expect(chapterTwo.some((level) => (level.razors?.length ?? 0) > 0)).toBe(true);

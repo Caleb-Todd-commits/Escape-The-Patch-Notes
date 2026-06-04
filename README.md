@@ -18,14 +18,14 @@ Escape the Patch Notes is a browser platformer where every level introduces a ne
 
 ## What I Made
 
-- A playable Vite + TypeScript + Canvas game with 40 short levels across Patch 1.0 through 4.9.
+- A playable Vite + TypeScript + Canvas game with 55 short levels across Patch 1.0 through 6.4.
 - Deterministic platformer physics, fixed level layouts, restarts, pause, two-page Choose Level screen, win screen, scoring, medals, persistent progress, and shareable run seeds.
 - A judge-first **Start Highlights** route that plays five curated patches in order, so the best jokes and mechanics are visible in the first few minutes.
 - Chiptune background music (Web Audio lookahead scheduler), pitch-shifted intro sounds per patch, particle bursts, and screen shake for each meaningful event.
 - Release-train progress indicator in the HUD showing all 40 patches by medal color as you advance.
 - Per-level patch completion cards with time, coins, deaths, medal, and challenge-star status at a glance.
 - Full release report on the win screen: all 40 level medals, time, deaths, coins, challenge stars, and recap prompts.
-- Two-page Choose Level screen: all 30 Chapter 1 levels on page one and all 10 Chapter 2 levels on page two, with visible forward/back arrows.
+- Two-page Choose Level screen: all 30 Chapter 1 levels on page one and all 25 Chapter 2 levels on page two, with visible forward/back arrows.
 - **Settings → Jump to Level**: inline ← [N] → picker that launches any of the 40 levels instantly. Intended for judges who want to skip straight to the hardest or flashiest patches.
 - **Start Highlights** button on the title screen and `H` shortcut on the Choose Level screen to jump between standout levels quickly.
 - Completion-gated replay challenges: once you beat a level, replaying unlocks an extra Challenge Patch goal such as filing a bug report, collecting every coin, beating par time, avoiding sensors, skipping rollback, or mastering a finale route.
@@ -42,7 +42,9 @@ The fastest path is the **Start Highlights** button on the title screen. It play
 - Patch `1.3` — gravity rotates sideways.
 - Patch `3.9` — late Chapter 1 stability gets suspicious.
 - Patch `4.2` — Production Floor double-jump unlock.
-- Patch `4.9` — Production Floor finale with lasers, razors, crushers, and moving exits.
+- Patch `4.9` — Production Floor mid-point finale.
+- Patch `5.8` — pre-6.x warmup with every hazard compressed to one screen.
+- Patch `6.3` — two-screen full-hazard gauntlet with sensors and lockdown doors.
 
 For direct access, press `B` for Choose Level or use **Settings → Jump to Level**. Chapter 2 is page two of Choose Level.
 
@@ -54,8 +56,8 @@ Codex was used throughout the build to rapidly prototype, iterate, and finish th
 - **Game loop and physics** — Codex implemented the canvas render loop, AABB collision with per-axis resolution, modifier system (crumbling platforms, spike magnet, async platforms, rollback tokens), and the gravity-rotation mechanic.
 - **Level design and tuning** — All 40 level layouts, coin placements, hazards, and challenge objectives were generated and tuned by Codex based on playtest feedback (shorter target times, clearer paths, more judge-friendly highlights).
 - **OpenAI integration** — Codex wrote the `/api/run` Vercel serverless function using the Responses API with a JSON Schema for Structured Outputs, the sanitizer that falls back gracefully on any bad output, and the seed-based run-ID system for shareable links.
-- **Tests** — Codex wrote the full Vitest unit suite (physics, scoring, progress, run sanitizer, level tuning) and the Playwright end-to-end sweep across all 40 levels including replay-challenge paths.
-- **Polish** — Chiptune music, release-train HUD, Chapter 2 tech visuals, double-jump indicator, win-screen layout, medal grid for all 40 levels, per-patch transition sounds, and particle variations were all implemented or refined with Codex.
+- **Tests** — Codex wrote the full Vitest unit suite (physics, scoring, progress, run sanitizer, level tuning) and the Playwright end-to-end sweep across all 55 levels including replay-challenge paths.
+- **Polish** — Chiptune music, release-train HUD, Chapter 2 tech visuals, double-jump indicator, win-screen layout, medal grid for all 55 levels, per-patch transition sounds, and particle variations were all implemented or refined with Codex.
 
 ## How to Play
 
@@ -116,6 +118,6 @@ The browser test suite smoke-tests Choose Level, checks the highlights route and
 - **Playable link:** https://escape-the-patch-notes.vercel.app
 - **Short description:** A browser platformer slowly ruined by its own updates.
 
-**Escape the Patch Notes** is a browser platformer slowly ruined by its own updates. Across 40 levels, each patch ships a new suspicious rule or remix: jump height nerfed for balance, coins now attract spikes, gravity rotated 90 degrees, platforms have a durability budget, exits charge fees, worlds expand, platforms move, wind pushes back, and Chapter 2 escalates into a modern Production Floor full of conveyors, lasers, razors, crushers, sensors, plasma vents, and an unlockable double jump. Beat a level once to ship the patch; replay it to earn its Challenge Patch star. Judges can use Start Highlights, Choose Level, or Settings > Jump to Level to skip directly to the most interesting patches. Finish the run and get a full release report graded from SHIP? to S.
+**Escape the Patch Notes** is a browser platformer slowly ruined by its own updates. Across 55 levels (25 per chapter), each patch ships a new suspicious rule or remix: jump height nerfed for balance, coins now attract spikes, gravity rotated 90 degrees, platforms have a durability budget, exits charge fees, worlds expand, platforms move, wind pushes back, and Chapter 2 escalates into a modern Production Floor full of conveyors, lasers, razors, crushers, sensors, plasma vents, and an unlockable double jump. Beat a level once to ship the patch; replay it to earn its Challenge Patch star. Judges can use Start Highlights, Choose Level, or Settings > Jump to Level to skip directly to the most interesting patches. Finish the run and get a full release report graded from SHIP? to S.
 
 The OpenAI Responses API generates the run's flavor — patch-note copy, severity labels, jokes, finale recap — via Structured Outputs. All gameplay is deterministic and fully playable with the fallback copy when no API key is present. The entire game was designed and built with Codex.
