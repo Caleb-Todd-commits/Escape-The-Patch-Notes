@@ -931,12 +931,8 @@ export class Game {
 
   private advanceDevDialog(): void {
     this.audio.play("start");
-    if (this.devDialogSlide < this.devDialogLines.length - 1) {
-      this.devDialogSlide++;
-    } else {
-      this.devDialogProceed?.();
-      this.devDialogProceed = null;
-    }
+    this.devDialogProceed?.();
+    this.devDialogProceed = null;
   }
 
   private startPlaying(time: number): void {
@@ -1618,27 +1614,50 @@ export class Game {
 
   private drawDevDialog(ctx: CanvasRenderingContext2D): void {
     const patch = this.currentPatch();
-    const line = this.devDialogLines[this.devDialogSlide] ?? "";
-    const isLast = this.devDialogSlide >= this.devDialogLines.length - 1;
     const blink = Math.floor(performance.now() / 500) % 4 !== 0;
+
+    // Cap each line at 120 chars so nothing overflows
+    const cap = (s: string) => s.length > 120 ? s.slice(0, 117) + "…" : s;
+    const rawLines = this.devDialogLines.map(cap);
+
+    // Measure total bubble content height
+    const pad = 16;                // inner horizontal padding per side
+    const bx = 128, bw = 550;
+    const textW = bw - pad * 2;
+    const fontSize = 16, lh = 22;
+    const nameH = 28;              // "DEV" label + gap
+    const hintH = 28;              // "tap to continue" hint
+    const dotsH = 24;              // dot row
+
+    // Pre-measure all lines combined
+    let textBlockH = 0;
+    rawLines.forEach((l, i) => {
+      const h = wrappedHeight(ctx, l, textW, lh, fontSize);
+      textBlockH += h;
+      if (i < rawLines.length - 1) textBlockH += 10; // gap between lines
+    });
+    textBlockH = Math.max(textBlockH, lh); // at least one row
+
+    const bh = nameH + textBlockH + dotsH + hintH + pad * 2;
+    const panelH = bh + 80; // room for char below
+    const panelTop = Math.max(40, 270 - panelH / 2);
 
     // Dark backdrop
     ctx.fillStyle = "rgba(6,9,24,0.88)";
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    // Panel
-    drawPanel(ctx, 110, 140, 740, 260, "rgba(10,15,36,0.97)", "#4a6fa5");
+    // Outer panel
+    drawPanel(ctx, 110, panelTop, 740, panelH, "rgba(10,15,36,0.97)", "#4a6fa5");
 
     // Patch badge top-right of panel
-    drawTextPill(ctx, `PATCH ${patch.version}`, 710, 170, "#111827", severityColor(patch.severity));
+    drawTextPill(ctx, `PATCH ${patch.version}`, 710, panelTop + 30, "#111827", severityColor(patch.severity));
 
-    // Dev character — right side of panel
-    const charX = 740;
-    const charY = 310;
-    this.drawDevChar(ctx, charX, charY, 2.2, blink);
+    // Dev character — right side of panel, vertically centered
+    const charY = panelTop + panelH - 30;
+    this.drawDevChar(ctx, 740, charY, 2.2, blink);
 
-    // Speech bubble — left of character
-    const bx = 128, by = 158, bw = 550, bh = 158;
+    // Speech bubble — sized to content
+    const by = panelTop + 20;
     ctx.fillStyle = "rgba(255,255,255,0.07)";
     ctx.strokeStyle = "#4a6fa5";
     ctx.lineWidth = 2;
@@ -1646,7 +1665,7 @@ export class Game {
     ctx.roundRect(bx, by, bw, bh, 12);
     ctx.fill();
     ctx.stroke();
-    // Bubble tail pointing right toward character
+    // Tail toward character
     ctx.fillStyle = "rgba(255,255,255,0.07)";
     ctx.strokeStyle = "#4a6fa5";
     ctx.beginPath();
@@ -1655,24 +1674,28 @@ export class Game {
     ctx.lineTo(bx + bw, by + bh / 2 + 10);
     ctx.fill();
 
-    // Dev name label
-    drawText(ctx, "DEV", bx + 16, by + 26, 13, "#4a6fa5", "bold");
+    // "DEV" label
+    drawText(ctx, "DEV", bx + pad, by + 20, 13, "#4a6fa5", "bold");
 
-    // Dialog text
-    drawWrappedText(ctx, line, bx + 16, by + 50, bw - 32, 20, "#ffffff");
+    // All lines stacked — setup first, punchline below with a subtle divider
+    let textY = by + nameH + pad;
+    rawLines.forEach((l, i) => {
+      if (i === rawLines.length - 1 && rawLines.length > 1) {
+        // Punchline separator
+        ctx.fillStyle = "rgba(74,111,165,0.3)";
+        ctx.fillRect(bx + pad, textY - 6, bw - pad * 2, 1);
+        textY += 6;
+      }
+      const color = i === rawLines.length - 1 && rawLines.length > 1 ? "#fff5d6" : "#ffffff";
+      drawWrappedText(ctx, l, bx + pad, textY, textW, lh, color, fontSize);
+      textY += wrappedHeight(ctx, l, textW, lh, fontSize) + (i < rawLines.length - 1 ? 10 : 0);
+    });
 
-    // Slide dots
-    for (let i = 0; i < this.devDialogLines.length; i++) {
-      ctx.fillStyle = i === this.devDialogSlide ? "#ffdc3f" : "#3a4a6a";
-      ctx.beginPath();
-      ctx.arc(bx + bw / 2 - (this.devDialogLines.length - 1) * 10 + i * 20, by + bh - 18, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Continue hint — pulsing
+    // "Tap to continue" hint — pulsing, inside bubble near bottom
+    const hintY = by + bh - hintH + 6;
     const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 350);
     ctx.globalAlpha = pulse;
-    drawText(ctx, isLast ? "▶  TAP TO SHIP PATCH" : "▶  TAP TO CONTINUE", VIEW_W / 2 - 10, 370, 14, "#87ffc4", "bold");
+    drawText(ctx, "▶  TAP TO SHIP PATCH", VIEW_W / 2 - 10, hintY, 13, "#87ffc4", "bold");
     ctx.globalAlpha = 1;
   }
 
@@ -1721,12 +1744,19 @@ export class Game {
     const blink = Math.floor(performance.now() / 500) % 3 !== 0;
     this.drawDevChar(ctx, 756, 310, 1.8, blink);
 
-    // Death line speech bubble — picks based on levelDeaths for variety
-    const lines = patch.deathLines ?? [];
-    const deathLine = lines.length > 0
-      ? lines[Math.min(this.levelDeaths - 1, lines.length - 1)]
+    // Death line — pick based on levelDeaths, cap at 120 chars
+    const deathLines = patch.deathLines ?? [];
+    const rawDeath = deathLines.length > 0
+      ? deathLines[Math.min(this.levelDeaths - 1, deathLines.length - 1)]
       : this.run.gameOverSummary;
-    const bx = 168, by = 262, bw = 540, bh = 52;
+    const deathLine = rawDeath.length > 120 ? rawDeath.slice(0, 117) + "…" : rawDeath;
+
+    // Size bubble to content
+    const bx = 168, bw = 522, pad = 12, fontSize = 15, lh = 20;
+    const textH = wrappedHeight(ctx, deathLine, bw - pad * 2, lh, fontSize);
+    const bh = textH + pad * 2 + 8;
+    const by = 262;
+
     ctx.fillStyle = "rgba(255,79,129,0.08)";
     ctx.strokeStyle = "#ff4f81";
     ctx.lineWidth = 1.5;
@@ -1734,19 +1764,20 @@ export class Game {
     ctx.roundRect(bx, by, bw, bh, 8);
     ctx.fill();
     ctx.stroke();
-    // Bubble tail pointing right toward dev
     ctx.fillStyle = "rgba(255,79,129,0.08)";
+    ctx.strokeStyle = "#ff4f81";
     ctx.beginPath();
     ctx.moveTo(bx + bw, by + bh / 2 - 6);
     ctx.lineTo(bx + bw + 14, by + bh / 2);
     ctx.lineTo(bx + bw, by + bh / 2 + 6);
     ctx.fill();
     ctx.stroke();
-    drawWrappedText(ctx, deathLine, bx + 12, by + 20, bw - 22, 16, "#ffffff");
+    drawWrappedText(ctx, deathLine, bx + pad, by + pad + fontSize, bw - pad * 2, lh, "#ffffff", fontSize);
 
-    drawPanel(ctx, 346, 360, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
-    drawText(ctx, "Restart →", 358, 379, 13, "#ff4f81", "bold");
-    this.hot(346, 360, 148, 28, () => { this.resetLevel(); this.startLevelIntro(); });
+    const btnY = by + bh + 14;
+    drawPanel(ctx, 346, btnY, 148, 28, "rgba(0,0,0,0.4)", "#ff4f81");
+    drawText(ctx, "Restart →", 358, btnY + 19, 13, "#ff4f81", "bold");
+    this.hot(346, btnY, 148, 28, () => { this.resetLevel(); this.startLevelIntro(); });
   }
 
   private drawLevelComplete(): void {
@@ -1781,9 +1812,14 @@ export class Game {
     const blink = Math.floor(performance.now() / 500) % 8 !== 0;
     const devX = 820, devY = this.bonusChallengeActive ? 440 : 420;
     this.drawDevChar(ctx, devX, devY, 1.6, blink);
-    // Small speech bubble to the left of dev
-    const joke = patch.devLines?.[patch.devLines.length - 1] ?? patch.joke;
-    const jbx = 568, jby = devY - 52, jbw = 218, jbh = 48;
+    // Joke bubble — auto-sized, capped at 120 chars
+    const rawJoke = patch.devLines?.[patch.devLines.length - 1] ?? patch.joke;
+    const joke = rawJoke.length > 120 ? rawJoke.slice(0, 117) + "…" : rawJoke;
+    const jpad = 10, jfs = 13, jlh = 18, jbw = 224;
+    const jbx = devX - jbw - 18;
+    const jtextH = wrappedHeight(ctx, joke, jbw - jpad * 2, jlh, jfs);
+    const jbh = jtextH + jpad * 2 + 4;
+    const jby = devY - 40 - jbh / 2;
     ctx.fillStyle = "rgba(10,15,36,0.92)";
     ctx.strokeStyle = medalColor(medal);
     ctx.lineWidth = 1.5;
@@ -1791,7 +1827,6 @@ export class Game {
     ctx.roundRect(jbx, jby, jbw, jbh, 8);
     ctx.fill();
     ctx.stroke();
-    // Tail pointing right
     ctx.fillStyle = "rgba(10,15,36,0.92)";
     ctx.strokeStyle = medalColor(medal);
     ctx.beginPath();
@@ -1800,7 +1835,7 @@ export class Game {
     ctx.lineTo(jbx + jbw, jby + jbh / 2 + 6);
     ctx.fill();
     ctx.stroke();
-    drawWrappedText(ctx, joke, jbx + 10, jby + 18, jbw - 18, 14, "#fff5d6");
+    drawWrappedText(ctx, joke, jbx + jpad, jby + jpad + jfs, jbw - jpad * 2, jlh, "#fff5d6", jfs);
   }
 
   private drawWinScreen(): void {
@@ -2380,6 +2415,25 @@ function drawText(
   ctx.fillText(text, x, y);
 }
 
+// Splits text into wrapped lines that fit within maxWidth at the given fontSize.
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number): string[] {
+  ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 function drawWrappedText(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -2388,24 +2442,16 @@ function drawWrappedText(
   maxWidth: number,
   lineHeight: number,
   color: string,
+  fontSize = 15,
 ): void {
-  const words = text.split(" ");
-  let line = "";
-  let offset = 0;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      drawText(ctx, line, x, y + offset, 15, color);
-      line = word;
-      offset += lineHeight;
-    } else {
-      line = test;
-    }
-  }
+  const lines = wrapLines(ctx, text, maxWidth, fontSize);
+  lines.forEach((l, i) => drawText(ctx, l, x, y + i * lineHeight, fontSize, color));
+}
 
-  if (line) {
-    drawText(ctx, line, x, y + offset, 15, color);
-  }
+// Returns total pixel height consumed by drawWrappedText for the given text.
+function wrappedHeight(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, lineHeight: number, fontSize = 15): number {
+  const n = wrapLines(ctx, text, maxWidth, fontSize).length;
+  return Math.max(1, n) * lineHeight;
 }
 
 function drawTextPill(ctx: CanvasRenderingContext2D, text: string, centerX: number, centerY: number, color: string, fill: string): void {
