@@ -4,7 +4,7 @@
   "installCommand": "npm install",
   "functions": {
     "api/run.ts": {
-      "maxDuration": 10
+      "maxDuration": 60
     }
   },
   "headers": [

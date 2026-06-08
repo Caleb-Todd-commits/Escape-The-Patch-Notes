@@ -53,13 +53,10 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
       .map((patch) => `Level ${patch.levelId}: Patch ${patch.version}, ${patch.modifier}`)
       .join("; ");
 
-    const response = await client.responses.create({
+    const response = await client.chat.completions.create({
       model,
-      input: [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT,
-        },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
         {
           role: "user",
           content: [
@@ -72,18 +69,18 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
           ].join(" "),
         },
       ],
-      text: {
-        format: {
-          type: "json_schema",
+      response_format: {
+        type: "json_schema",
+        json_schema: {
           name: "patch_run",
           schema: runJsonSchema,
           strict: true,
         },
       },
-      max_output_tokens: 8000,
+      max_tokens: 8000,
     });
 
-    const parsed = JSON.parse(response.output_text);
+    const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
     res.status(200).json(sanitizeRun(parsed, seed, "openai", difficulty));
   } catch (error) {
     console.error("OpenAI run generation failed", error);
