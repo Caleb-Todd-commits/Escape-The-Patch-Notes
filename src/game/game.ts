@@ -2673,122 +2673,290 @@ export class Game {
     ctx.save();
     ctx.translate(cx, cy);
 
-    const coreColor = mood === "worried" ? "#ffdc3f" : mood === "exhausted" ? "#ff4f81" : mood === "proud" ? "#87ffc4" : "#70f5ff";
-    ctx.shadowColor = coreColor;
-    ctx.shadowBlur = 10 * s;
+    const now = performance.now();
+    const pulse = 0.5 + Math.sin(now / 480) * 0.5;           // 0→1 glow breath
+    const fastPulse = 0.5 + Math.sin(now / 180) * 0.5;       // fast status blink
 
-    const body = ctx.createLinearGradient(0, -12 * s, 0, 42 * s);
-    body.addColorStop(0, "#1b405a");
-    body.addColorStop(0.52, "#0e2238");
-    body.addColorStop(1, "#050b18");
+    const coreColor = mood === "worried" ? "#ffdc3f"
+      : mood === "exhausted" ? "#ff4f81"
+      : mood === "proud"     ? "#87ffc4"
+      : "#70f5ff";
+    const glowAlpha = 0.55 + pulse * 0.45;
+
+    // ── Body ─────────────────────────────────────────────────────────────────
+    ctx.shadowColor = coreColor;
+    ctx.shadowBlur = (8 + pulse * 6) * s;
+    const body = ctx.createLinearGradient(0, -12 * s, 0, 44 * s);
+    body.addColorStop(0, "#1a3d58");
+    body.addColorStop(0.5, "#0c1e33");
+    body.addColorStop(1, "#040c18");
     ctx.fillStyle = body;
     ctx.beginPath();
-    ctx.roundRect(-28 * s, -10 * s, 56 * s, 50 * s, 14 * s);
+    ctx.roundRect(-28 * s, -10 * s, 56 * s, 54 * s, 14 * s);
     ctx.fill();
     ctx.strokeStyle = coreColor;
     ctx.lineWidth = 1.8 * s;
+    ctx.globalAlpha = glowAlpha;
     ctx.beginPath();
-    ctx.roundRect(-26 * s, -8 * s, 52 * s, 46 * s, 12 * s);
+    ctx.roundRect(-26 * s, -8 * s, 52 * s, 50 * s, 12 * s);
     ctx.stroke();
-
+    ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(112,245,255,0.18)";
+
+    // Chest display — version tag with blinking cursor
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
     ctx.beginPath();
-    ctx.roundRect(-18 * s, 2 * s, 36 * s, 18 * s, 5 * s);
+    ctx.roundRect(-19 * s, 2 * s, 38 * s, 16 * s, 4 * s);
     ctx.fill();
     ctx.fillStyle = coreColor;
-    for (let i = 0; i < 4; i += 1) {
-      ctx.fillRect((-13 + i * 8) * s, 28 * s, 4 * s, 4 * s);
+    ctx.globalAlpha = 0.9;
+    ctx.font = `bold ${Math.round(6.5 * s)}px ui-monospace, Menlo, monospace`;
+    ctx.textBaseline = "middle";
+    ctx.fillText("v5.9", -14 * s, 10 * s);
+    if (fastPulse > 0.5) {
+      ctx.fillRect(6 * s, 6 * s, 3 * s, 8 * s);  // blinking cursor
     }
+    ctx.globalAlpha = 1;
 
+    // Bottom status dots — 4 activity LEDs
+    for (let i = 0; i < 4; i += 1) {
+      const active = mood === "exhausted" ? i < 1
+        : mood === "worried" ? i < 2
+        : mood === "proud"   ? i === 3 && fastPulse > 0.5 || i < 3
+        : i < 3 || fastPulse > 0.6;
+      ctx.fillStyle = active ? coreColor : "rgba(112,245,255,0.2)";
+      ctx.shadowColor = active ? coreColor : "transparent";
+      ctx.shadowBlur = active ? 5 * s : 0;
+      ctx.beginPath();
+      ctx.arc((-12 + i * 9) * s, 32 * s, 2.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // ── Head ─────────────────────────────────────────────────────────────────
     ctx.shadowColor = coreColor;
-    ctx.shadowBlur = 14 * s;
-    const head = ctx.createLinearGradient(-22 * s, -64 * s, 22 * s, -20 * s);
-    head.addColorStop(0, "#203d64");
-    head.addColorStop(0.48, "#0d2037");
-    head.addColorStop(1, "#07101f");
+    ctx.shadowBlur = (12 + pulse * 8) * s;
+    const head = ctx.createLinearGradient(-22 * s, -68 * s, 22 * s, -22 * s);
+    head.addColorStop(0, "#1e3c62");
+    head.addColorStop(0.45, "#0c1e37");
+    head.addColorStop(1, "#060e1e");
     ctx.fillStyle = head;
     ctx.beginPath();
-    ctx.roundRect(-25 * s, -66 * s, 50 * s, 44 * s, 13 * s);
+    ctx.roundRect(-26 * s, -68 * s, 52 * s, 46 * s, 13 * s);
     ctx.fill();
     ctx.strokeStyle = coreColor;
     ctx.lineWidth = 2 * s;
+    ctx.globalAlpha = glowAlpha;
     ctx.beginPath();
-    ctx.roundRect(-23 * s, -64 * s, 46 * s, 40 * s, 11 * s);
+    ctx.roundRect(-24 * s, -66 * s, 48 * s, 42 * s, 11 * s);
     ctx.stroke();
+    ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = "rgba(112,245,255,0.32)";
-    ctx.lineWidth = 1.2 * s;
-    ctx.beginPath();
-    ctx.moveTo(-10 * s, -66 * s);
-    ctx.lineTo(-18 * s, -80 * s);
-    ctx.moveTo(10 * s, -66 * s);
-    ctx.lineTo(18 * s, -80 * s);
-    ctx.stroke();
-    ctx.fillStyle = coreColor;
-    ctx.beginPath();
-    ctx.arc(-19 * s, -82 * s, 3.4 * s, 0, Math.PI * 2);
-    ctx.arc(19 * s, -82 * s, 3.4 * s, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "rgba(0,0,0,0.36)";
-    ctx.beginPath();
-    ctx.roundRect(-17 * s, -55 * s, 34 * s, 17 * s, 6 * s);
-    ctx.fill();
-    ctx.fillStyle = coreColor;
-    if (blink) {
-      if (mood === "worried") {
-        ctx.fillRect(-12 * s, -49 * s, 7 * s, 2.4 * s);
-        ctx.fillRect(5 * s, -49 * s, 7 * s, 2.4 * s);
-      } else if (mood === "exhausted") {
-        ctx.fillRect(-12 * s, -47 * s, 8 * s, 1.8 * s);
-        ctx.fillRect(4 * s, -47 * s, 8 * s, 1.8 * s);
-      } else {
-        ctx.beginPath();
-        ctx.roundRect(-13 * s, -51 * s, 9 * s, 5 * s, 2 * s);
-        ctx.roundRect(4 * s, -51 * s, 9 * s, 5 * s, 2 * s);
-        ctx.fill();
-      }
-    } else {
-      ctx.fillRect(-12 * s, -48 * s, 8 * s, 1.5 * s);
-      ctx.fillRect(4 * s, -48 * s, 8 * s, 1.5 * s);
-    }
-
-    ctx.strokeStyle = coreColor;
-    ctx.lineWidth = 1.5 * s;
-    ctx.beginPath();
-    if (mood === "worried") {
-      ctx.moveTo(-8 * s, -33 * s);
-      ctx.quadraticCurveTo(0, -37 * s, 8 * s, -33 * s);
-    } else if (mood === "exhausted") {
-      ctx.moveTo(-8 * s, -34 * s);
-      ctx.lineTo(8 * s, -34 * s);
-    } else {
-      ctx.moveTo(-9 * s, -35 * s);
-      ctx.quadraticCurveTo(0, -30 * s, 10 * s, -35 * s);
-    }
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(112,245,255,0.36)";
-    ctx.lineWidth = 1 * s;
-    for (let y = -58; y <= -28; y += 10) {
+    // Neural node grid on head — 3×2 dots with connecting lines
+    const nodes: [number, number][] = [
+      [-14, -58], [0, -58], [14, -58],
+      [-14, -44], [0, -44], [14, -44],
+    ];
+    const nodeConnections: [number, number][] = [
+      [0,1],[1,2],[3,4],[4,5],[0,3],[1,4],[2,5],[0,4],[1,5],[1,3],
+    ];
+    ctx.strokeStyle = `rgba(112,245,255,0.18)`;
+    ctx.lineWidth = 0.8 * s;
+    for (const [a, b] of nodeConnections) {
       ctx.beginPath();
-      ctx.moveTo(-20 * s, y * s);
-      ctx.lineTo(20 * s, y * s);
+      ctx.moveTo(nodes[a][0] * s, nodes[a][1] * s);
+      ctx.lineTo(nodes[b][0] * s, nodes[b][1] * s);
       ctx.stroke();
     }
+    for (const [nx, ny] of nodes) {
+      ctx.fillStyle = `rgba(112,245,255,${0.28 + pulse * 0.22})`;
+      ctx.shadowColor = "#70f5ff";
+      ctx.shadowBlur = 3 * s;
+      ctx.beginPath();
+      ctx.arc(nx * s, ny * s, 1.8 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "#08111f";
+    // ── Eyes — large, mood-distinct ──────────────────────────────────────────
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
     ctx.beginPath();
-    ctx.roundRect(-41 * s, -4 * s, 13 * s, 28 * s, 6 * s);
-    ctx.roundRect(28 * s, -4 * s, 13 * s, 28 * s, 6 * s);
+    ctx.roundRect(-20 * s, -62 * s, 38 * s, 14 * s, 4 * s);
+    ctx.fill();
+
+    ctx.fillStyle = coreColor;
+    ctx.shadowColor = coreColor;
+    ctx.shadowBlur = 7 * s;
+
+    if (!blink) {
+      // Eyes closed — thin horizontal bars
+      ctx.fillRect(-17 * s, -57 * s, 14 * s, 2 * s);
+      ctx.fillRect(3 * s,   -57 * s, 14 * s, 2 * s);
+    } else if (mood === "confident") {
+      // Solid square pupils — calm and alert
+      ctx.beginPath();
+      ctx.roundRect(-17 * s, -61 * s, 13 * s, 10 * s, 2 * s);
+      ctx.roundRect(4 * s,   -61 * s, 13 * s, 10 * s, 2 * s);
+      ctx.fill();
+    } else if (mood === "proud") {
+      // Upward arc — visibly happy
+      ctx.lineWidth = 2.5 * s;
+      ctx.strokeStyle = coreColor;
+      ctx.beginPath();
+      ctx.arc(-10 * s, -54 * s, 6 * s, Math.PI, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(11 * s, -54 * s, 6 * s, Math.PI, 0);
+      ctx.stroke();
+      // Pulsing ring on proud
+      ctx.globalAlpha = 0.35 + pulse * 0.35;
+      ctx.lineWidth = 1.5 * s;
+      ctx.beginPath();
+      ctx.arc(-10 * s, -57 * s, 9 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(11 * s, -57 * s, 9 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    } else if (mood === "worried") {
+      // Diagonal slash pupils — tense
+      ctx.lineWidth = 3 * s;
+      ctx.strokeStyle = coreColor;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-17 * s, -61 * s); ctx.lineTo(-5 * s, -51 * s);
+      ctx.moveTo(4 * s,   -61 * s); ctx.lineTo(16 * s, -51 * s);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      // Worry ticks above each eye
+      ctx.lineWidth = 1.5 * s;
+      ctx.beginPath();
+      ctx.moveTo(-14 * s, -64 * s); ctx.lineTo(-10 * s, -62 * s);
+      ctx.moveTo(7 * s,   -64 * s); ctx.lineTo(11 * s,  -62 * s);
+      ctx.stroke();
+    } else {
+      // exhausted — narrow horizontal slit + droop marks
+      ctx.fillRect(-17 * s, -57 * s, 13 * s, 3.5 * s);
+      ctx.fillRect(4 * s,   -57 * s, 13 * s, 3.5 * s);
+      ctx.globalAlpha = 0.5;
+      ctx.fillRect(-17 * s, -53 * s, 13 * s, 2 * s);
+      ctx.fillRect(4 * s,   -53 * s, 13 * s, 2 * s);
+      ctx.globalAlpha = 1;
+    }
+    ctx.shadowBlur = 0;
+
+    // ── Mouth — terminal-style, unambiguous per mood ──────────────────────────
+    ctx.font = `bold ${Math.round(7 * s)}px ui-monospace, Menlo, monospace`;
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = coreColor;
+    ctx.shadowColor = coreColor;
+    ctx.shadowBlur = 5 * s;
+    const mouthY = -36 * s;
+    if (mood === "confident") {
+      ctx.fillText(">_", -10 * s, mouthY);
+    } else if (mood === "proud") {
+      ctx.fillText("^v^", -13 * s, mouthY);
+    } else if (mood === "worried") {
+      ctx.fillText("?!", -8 * s, mouthY);
+    } else {
+      ctx.fillText("—", -6 * s, mouthY);
+    }
+    ctx.shadowBlur = 0;
+
+    // ── Antennas — mood reactive ──────────────────────────────────────────────
+    ctx.lineWidth = 1.5 * s;
+    if (mood === "worried") {
+      // Droop inward
+      ctx.strokeStyle = `rgba(112,245,255,0.5)`;
+      ctx.beginPath();
+      ctx.moveTo(-12 * s, -68 * s); ctx.lineTo(-18 * s, -80 * s);
+      ctx.moveTo(12 * s,  -68 * s); ctx.lineTo(18 * s,  -80 * s);
+      ctx.stroke();
+      ctx.fillStyle = coreColor;
+      ctx.beginPath();
+      ctx.arc(-19 * s, -82 * s, 3 * s, 0, Math.PI * 2);
+      ctx.arc(19 * s,  -82 * s, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (mood === "exhausted") {
+      // Limp downward
+      ctx.strokeStyle = `rgba(112,245,255,0.3)`;
+      ctx.beginPath();
+      ctx.moveTo(-12 * s, -68 * s); ctx.quadraticCurveTo(-22 * s, -72 * s, -24 * s, -79 * s);
+      ctx.moveTo(12 * s,  -68 * s); ctx.quadraticCurveTo(22 * s,  -72 * s, 24 * s,  -79 * s);
+      ctx.stroke();
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = coreColor;
+      ctx.beginPath();
+      ctx.arc(-25 * s, -80 * s, 2.5 * s, 0, Math.PI * 2);
+      ctx.arc(25 * s,  -80 * s, 2.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (mood === "proud") {
+      // Raised with halos
+      ctx.strokeStyle = coreColor;
+      ctx.shadowColor = coreColor;
+      ctx.shadowBlur = 8 * s;
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, -68 * s); ctx.lineTo(-12 * s, -84 * s);
+      ctx.moveTo(10 * s,  -68 * s); ctx.lineTo(12 * s,  -84 * s);
+      ctx.stroke();
+      ctx.fillStyle = coreColor;
+      ctx.beginPath();
+      ctx.arc(-12 * s, -86 * s, 3.5 * s, 0, Math.PI * 2);
+      ctx.arc(12 * s,  -86 * s, 3.5 * s, 0, Math.PI * 2);
+      ctx.fill();
+      // Halo rings
+      ctx.globalAlpha = 0.3 + pulse * 0.35;
+      ctx.lineWidth = 1.2 * s;
+      ctx.beginPath();
+      ctx.arc(-12 * s, -86 * s, 7 * s, 0, Math.PI * 2);
+      ctx.arc(12 * s,  -86 * s, 7 * s, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    } else {
+      // Upright
+      ctx.strokeStyle = `rgba(112,245,255,0.55)`;
+      ctx.beginPath();
+      ctx.moveTo(-10 * s, -68 * s); ctx.lineTo(-14 * s, -82 * s);
+      ctx.moveTo(10 * s,  -68 * s); ctx.lineTo(14 * s,  -82 * s);
+      ctx.stroke();
+      ctx.fillStyle = coreColor;
+      ctx.shadowColor = coreColor;
+      ctx.shadowBlur = 6 * s;
+      ctx.beginPath();
+      ctx.arc(-14 * s, -84 * s, 3.2 * s, 0, Math.PI * 2);
+      ctx.arc(14 * s,  -84 * s, 3.2 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // ── Arms / side panels ────────────────────────────────────────────────────
+    ctx.fillStyle = "#070f1c";
+    ctx.beginPath();
+    ctx.roundRect(-42 * s, -2 * s, 14 * s, 26 * s, 6 * s);
+    ctx.roundRect(28 * s,  -2 * s, 14 * s, 26 * s, 6 * s);
     ctx.fill();
     ctx.strokeStyle = coreColor;
-    ctx.stroke();
-    ctx.fillStyle = "rgba(112,245,255,0.28)";
+    ctx.lineWidth = 1.4 * s;
+    ctx.globalAlpha = 0.6;
     ctx.beginPath();
-    ctx.roundRect(-7 * s, 42 * s, 14 * s, 11 * s, 4 * s);
+    ctx.roundRect(-41 * s, -1 * s, 12 * s, 24 * s, 5 * s);
+    ctx.roundRect(29 * s,  -1 * s, 12 * s, 24 * s, 5 * s);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // Data cable loop on right arm
+    ctx.strokeStyle = `rgba(112,245,255,0.35)`;
+    ctx.lineWidth = 1 * s;
+    ctx.beginPath();
+    ctx.arc(35 * s, 10 * s, 4 * s, Math.PI * 0.6, Math.PI * 2.4);
+    ctx.stroke();
+
+    // ── Feet / base ───────────────────────────────────────────────────────────
+    ctx.fillStyle = "rgba(112,245,255,0.22)";
+    ctx.beginPath();
+    ctx.roundRect(-8 * s, 44 * s, 16 * s, 10 * s, 4 * s);
     ctx.fill();
 
     ctx.restore();
