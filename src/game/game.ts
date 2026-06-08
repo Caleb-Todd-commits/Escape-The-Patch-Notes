@@ -179,7 +179,7 @@ interface Bindings {
 const DEFAULT_BINDINGS: Bindings = { left: "ArrowLeft", right: "ArrowRight", jump: "Space", pause: "Escape" };
 const SETTINGS_ROWS = 8; // name, left, right, jump, pause, touch, game select, factory reset
 const CHAPTER_TWO_START_INDEX = Math.max(0, levels.findIndex((level) => level.chapter === "production_floor"));
-const EXHIBITION_SEQUENCE = [2, 3, 29, 32, 39, 48, 54];
+const EXHIBITION_SEQUENCE = [2, 3, 24, 27, 34, 43, 49];
 const HIGHLIGHT_SEQUENCE = EXHIBITION_SEQUENCE;
 const JUDGE_HIGHLIGHTS = EXHIBITION_SEQUENCE;
 
@@ -1103,7 +1103,7 @@ export class Game {
     saveLevelProgress(this.levelProgress);
     this.levelCompletedAt = time;
     this.medalRevealUntil = time + 920;
-    if (this.level.id === 33) {
+    if (this.level.id === 28) {
       this.doubleJumpUnlockUntil = time + 2600;
     }
     this.setMode("levelComplete");
@@ -1338,11 +1338,11 @@ export class Game {
   }
 
   private hasDoubleJumpUnlocked(): boolean {
-    if (this.level.id < 31) {
+    if (this.level.id < 26) {
       return false;
     }
 
-    return this.level.id >= 34 || Boolean(this.levelProgress[33]?.completed);
+    return this.level.id >= 29 || Boolean(this.levelProgress[28]?.completed);
   }
 
   private canDoubleJump(): boolean {
@@ -3118,7 +3118,7 @@ export class Game {
         drawText(ctx, "★", 538, 314, 22 + Math.sin(now / 80) * 2, "#ffdc3f", "bold");
       }
     }
-    const unlockVisible = this.level.id === 33 && now < this.doubleJumpUnlockUntil;
+    const unlockVisible = this.level.id === 28 && now < this.doubleJumpUnlockUntil;
     if (unlockVisible) {
       drawPanel(ctx, 258, this.bonusChallengeActive ? 328 : 300, 318, 34, "rgba(12, 22, 42, 0.92)", "#70f5ff");
       drawText(ctx, "DOUBLE JUMP UNLOCKED", 276, this.bonusChallengeActive ? 350 : 322, 15, "#70f5ff", "bold");

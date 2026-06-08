@@ -730,145 +730,6 @@ export const levels: LevelDefinition[] = [
     id: 16,
     patchId: 16,
     title: "Patch 2.5",
-    modifier: "base",
-    gravity: "down",
-    start: { x: 54, y: 458, w: 28, h: 34 },
-    exit: { x: 878, y: 258, w: 38, h: 62 },
-    platforms: [
-      ground("l16-ground"),
-      platform("l16-a", 142, 442, 118),
-      platform("l16-b", 300, 398, 122),
-      platform("l16-c", 496, 348, 120),
-      platform("l16-d", 690, 292, 150),
-      platform("l16-e", 770, 400, 94),
-    ],
-    coins: [
-      coin("l16-c1", 194, 408), coin("l16-c2", 354, 364),
-      coin("l16-c3", 548, 314), coin("l16-c4", 748, 258),
-    ],
-    spikes: [spike("l16-s1", 270, 470), spike("l16-s2", 446, 470), spike("l16-s3", 632, 470), spike("l16-s4", 840, 470)],
-    bugReport: report("l16-bug", 748, 260, "Support ticket became load-bearing"),
-    bounds: WORLD,
-    background: "#14264a",
-  },
-
-  {
-    id: 17,
-    patchId: 17,
-    title: "Patch 2.6",
-    modifier: "jump_nerf",
-    gravity: "down",
-    start: { x: 54, y: 458, w: 28, h: 34 },
-    exit: { x: 878, y: 318, w: 38, h: 62 },
-    platforms: [
-      ground("l17-ground"),
-      platform("l17-a", 150, 438, 118),
-      platform("l17-b", 330, 408, 122),
-      platform("l17-c", 526, 380, 118),
-      platform("l17-d", 724, 352, 150),
-    ],
-    coins: [
-      coin("l17-c1", 204, 404), coin("l17-c2", 386, 374),
-      coin("l17-c3", 580, 346), coin("l17-c4", 804, 318),
-    ],
-    spikes: [spike("l17-s1", 294, 470), spike("l17-s2", 480, 470), spike("l17-s3", 682, 470)],
-    bugReport: report("l17-bug", 796, 320, "Second jump nerf marked consistent"),
-    bounds: WORLD,
-    background: "#1c2c44",
-  },
-
-  {
-    id: 18,
-    patchId: 18,
-    title: "Patch 2.7",
-    modifier: "coin_spike_magnet",
-    gravity: "down",
-    start: { x: 54, y: 458, w: 28, h: 34 },
-    exit: { x: 878, y: 438, w: 38, h: 62 },
-    platforms: [
-      ground("l18-ground"),
-      platform("l18-a", 162, 426, 120),
-      platform("l18-b", 350, 394, 120),
-      platform("l18-c", 546, 358, 122),
-      platform("l18-d", 724, 410, 120),
-    ],
-    coins: [
-      coin("l18-c1", 214, 392), coin("l18-c2", 406, 360),
-      coin("l18-c3", 604, 324), coin("l18-c4", 774, 376),
-      coin("l18-c5", 846, 470),
-    ],
-    spikes: [spike("l18-s1", 308, 470), spike("l18-s2", 504, 470), spike("l18-s3", 690, 470)],
-    bugReport: report("l18-bug", 596, 326, "Analytics notified the hazards"),
-    bounds: WORLD,
-    background: "#201d46",
-  },
-
-  {
-    id: 19,
-    patchId: 19,
-    title: "Patch 2.8",
-    modifier: "async_platforms",
-    gravity: "down",
-    start: { x: 54, y: 458, w: 28, h: 34 },
-    exit: { x: 878, y: 238, w: 38, h: 62 },
-    platforms: [
-      ground("l19-ground"),
-      asyncPlatform("l19-a", 142, 426, 116, 22, 0.2),
-      asyncPlatform("l19-b", 316, 388, 116, 22, 0.9),
-      platform("l19-rest", 496, 356, 110),
-      asyncPlatform("l19-c", 650, 306, 116, 22, 1.4),
-      asyncPlatform("l19-d", 776, 274, 120, 22, 0.35),
-    ],
-    coins: [
-      coin("l19-c1", 194, 394), coin("l19-c2", 366, 354),
-      coin("l19-c3", 548, 322), coin("l19-c4", 704, 272),
-    ],
-    spikes: [spike("l19-s1", 284, 470), spike("l19-s2", 464, 470), spike("l19-s3", 624, 470)],
-    bugReport: report("l19-bug", 724, 274, "Standup delayed platform delivery"),
-    bounds: WORLD,
-    background: "#262147",
-  },
-
-  {
-    id: 20,
-    patchId: 20,
-    title: "Patch 2.9",
-    modifier: "moving_exit",
-    gravity: "down",
-    start: { x: 54, y: 458, w: 28, h: 34 },
-    exit: {
-      x: 840,
-      y: 438,
-      w: 38,
-      h: 62,
-      pads: [
-        { id: "l20-p1", x: 840, y: 438, w: 38, h: 62 },
-        { id: "l20-p2", x: 604, y: 332, w: 38, h: 62 },
-        { id: "l20-p3", x: 828, y: 234, w: 38, h: 62 },
-      ],
-    },
-    platforms: [
-      ground("l20-ground"),
-      platform("l20-a", 148, 426, 120),
-      platform("l20-b", 328, 382, 120),
-      platform("l20-c", 566, 394, 120),
-      platform("l20-d", 762, 266, 130),
-      platform("l20-e", 752, 452, 94),
-    ],
-    coins: [
-      coin("l20-c1", 204, 392), coin("l20-c2", 384, 348),
-      coin("l20-c3", 620, 360), coin("l20-c4", 842, 232),
-    ],
-    spikes: [spike("l20-s1", 292, 470), spike("l20-s2", 500, 470), spike("l20-s3", 704, 470)],
-    bugReport: report("l20-bug", 840, 234, "Exit load balancer failed predictably"),
-    bounds: WORLD,
-    background: "#14324b",
-  },
-
-  {
-    id: 21,
-    patchId: 21,
-    title: "Patch 3.0",
     modifier: "wide_world",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -901,9 +762,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 22,
-    patchId: 22,
-    title: "Patch 3.1",
+    id: 17,
+    patchId: 17,
+    title: "Patch 2.6",
     modifier: "tall_world",
     gravity: "down",
     start: { x: 54, y: 1016, w: 28, h: 34 },
@@ -942,9 +803,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 23,
-    patchId: 23,
-    title: "Patch 3.2",
+    id: 18,
+    patchId: 18,
+    title: "Patch 2.7",
     modifier: "crumbling_platforms",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -976,9 +837,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 24,
-    patchId: 24,
-    title: "Patch 3.3",
+    id: 19,
+    patchId: 19,
+    title: "Patch 2.8",
     modifier: "moving_platforms_h",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -1007,9 +868,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 25,
-    patchId: 25,
-    title: "Patch 3.4",
+    id: 20,
+    patchId: 20,
+    title: "Patch 2.9",
     modifier: "headwind",
     gravity: "down",
     wind: -960,
@@ -1034,9 +895,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 26,
-    patchId: 26,
-    title: "Patch 3.5",
+    id: 21,
+    patchId: 21,
+    title: "Patch 3.0",
     modifier: "rollback_token",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -1066,9 +927,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 27,
-    patchId: 27,
-    title: "Patch 3.6",
+    id: 22,
+    patchId: 22,
+    title: "Patch 3.1",
     modifier: "exit_fee",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -1093,9 +954,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 28,
-    patchId: 28,
-    title: "Patch 3.7",
+    id: 23,
+    patchId: 23,
+    title: "Patch 3.2",
     modifier: "rotated_gravity",
     gravity: "right",
     start: { x: 52, y: 140, w: 28, h: 34 },
@@ -1122,9 +983,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 29,
-    patchId: 29,
-    title: "Patch 3.8",
+    id: 24,
+    patchId: 24,
+    title: "Patch 3.3",
     modifier: "slippery_floor",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -1152,9 +1013,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 30,
-    patchId: 30,
-    title: "Patch 3.9",
+    id: 25,
+    patchId: 25,
+    title: "Patch 3.4",
     modifier: "finale_combo",
     gravity: "down",
     start: { x: 54, y: 458, w: 28, h: 34 },
@@ -1192,9 +1053,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 31,
-    patchId: 31,
-    title: "Patch 4.0",
+    id: 26,
+    patchId: 26,
+    title: "Patch 3.5",
     chapter: "production_floor",
     modifier: "production_intro",
     gravity: "down",
@@ -1220,9 +1081,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 32,
-    patchId: 32,
-    title: "Patch 4.1",
+    id: 27,
+    patchId: 27,
+    title: "Patch 3.6",
     chapter: "production_floor",
     modifier: "security_lasers",
     gravity: "down",
@@ -1253,9 +1114,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 33,
-    patchId: 33,
-    title: "Patch 4.2",
+    id: 28,
+    patchId: 28,
+    title: "Patch 3.7",
     chapter: "production_floor",
     modifier: "double_jump_unlock",
     gravity: "down",
@@ -1281,9 +1142,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 34,
-    patchId: 34,
-    title: "Patch 4.3",
+    id: 29,
+    patchId: 29,
+    title: "Patch 3.8",
     chapter: "production_floor",
     modifier: "razor_rails",
     gravity: "down",
@@ -1316,9 +1177,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 35,
-    patchId: 35,
-    title: "Patch 4.4",
+    id: 30,
+    patchId: 30,
+    title: "Patch 3.9",
     chapter: "production_floor",
     modifier: "sweep_lasers",
     gravity: "down",
@@ -1358,9 +1219,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 36,
-    patchId: 36,
-    title: "Patch 4.5",
+    id: 31,
+    patchId: 31,
+    title: "Patch 4.0",
     chapter: "production_floor",
     modifier: "crusher_panels",
     gravity: "down",
@@ -1392,9 +1253,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 37,
-    patchId: 37,
-    title: "Patch 4.6",
+    id: 32,
+    patchId: 32,
+    title: "Patch 4.1",
     chapter: "production_floor",
     modifier: "tesla_arcs",
     gravity: "down",
@@ -1426,9 +1287,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 38,
-    patchId: 38,
-    title: "Patch 4.7",
+    id: 33,
+    patchId: 33,
+    title: "Patch 4.2",
     chapter: "production_floor",
     modifier: "security_sensors",
     gravity: "down",
@@ -1465,9 +1326,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 39,
-    patchId: 39,
-    title: "Patch 4.8",
+    id: 34,
+    patchId: 34,
+    title: "Patch 4.3",
     chapter: "production_floor",
     modifier: "plasma_vents",
     gravity: "down",
@@ -1500,9 +1361,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 40,
-    patchId: 40,
-    title: "Patch 4.9",
+    id: 35,
+    patchId: 35,
+    title: "Patch 4.4",
     chapter: "production_floor",
     modifier: "production_finale",
     gravity: "down",
@@ -1539,9 +1400,9 @@ export const levels: LevelDefinition[] = [
   // ── Chapter 2 continuation: Patches 5.0–5.14 ─────────────────────────────
 
   {
-    id: 41,
-    patchId: 41,
-    title: "Patch 5.0",
+    id: 36,
+    patchId: 36,
+    title: "Patch 4.5",
     chapter: "production_floor",
     modifier: "security_lasers",
     gravity: "down",
@@ -1581,9 +1442,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 42,
-    patchId: 42,
-    title: "Patch 5.1",
+    id: 37,
+    patchId: 37,
+    title: "Patch 4.6",
     chapter: "production_floor",
     modifier: "razor_rails",
     gravity: "down",
@@ -1616,9 +1477,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 43,
-    patchId: 43,
-    title: "Patch 5.2",
+    id: 38,
+    patchId: 38,
+    title: "Patch 4.7",
     chapter: "production_floor",
     modifier: "sweep_lasers",
     gravity: "down",
@@ -1657,9 +1518,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 44,
-    patchId: 44,
-    title: "Patch 5.3",
+    id: 39,
+    patchId: 39,
+    title: "Patch 4.8",
     chapter: "production_floor",
     modifier: "crusher_panels",
     gravity: "down",
@@ -1700,9 +1561,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 45,
-    patchId: 45,
-    title: "Patch 5.4",
+    id: 40,
+    patchId: 40,
+    title: "Patch 4.9",
     chapter: "production_floor",
     modifier: "tesla_arcs",
     gravity: "down",
@@ -1736,9 +1597,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 46,
-    patchId: 46,
-    title: "Patch 5.5",
+    id: 41,
+    patchId: 41,
+    title: "Patch 5.0",
     chapter: "production_floor",
     modifier: "security_sensors",
     gravity: "down",
@@ -1775,9 +1636,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 47,
-    patchId: 47,
-    title: "Patch 5.6",
+    id: 42,
+    patchId: 42,
+    title: "Patch 5.1",
     chapter: "production_floor",
     modifier: "plasma_vents",
     gravity: "down",
@@ -1810,9 +1671,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 48,
-    patchId: 48,
-    title: "Patch 5.7",
+    id: 43,
+    patchId: 43,
+    title: "Patch 5.2",
     chapter: "production_floor",
     modifier: "razor_rails",
     gravity: "down",
@@ -1853,9 +1714,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 49,
-    patchId: 49,
-    title: "Patch 5.8",
+    id: 44,
+    patchId: 44,
+    title: "Patch 5.3",
     chapter: "production_floor",
     modifier: "production_finale",
     gravity: "down",
@@ -1888,9 +1749,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 50,
-    patchId: 50,
-    title: "Patch 5.9",
+    id: 45,
+    patchId: 45,
+    title: "Patch 5.4",
     chapter: "production_floor",
     modifier: "production_finale",
     gravity: "down",
@@ -1941,9 +1802,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 51,
-    patchId: 51,
-    title: "Patch 6.0",
+    id: 46,
+    patchId: 46,
+    title: "Patch 5.5",
     chapter: "production_floor",
     modifier: "security_lasers",
     gravity: "down",
@@ -1980,9 +1841,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 52,
-    patchId: 52,
-    title: "Patch 6.1",
+    id: 47,
+    patchId: 47,
+    title: "Patch 5.6",
     chapter: "production_floor",
     modifier: "crusher_panels",
     gravity: "down",
@@ -2016,9 +1877,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 53,
-    patchId: 53,
-    title: "Patch 6.2",
+    id: 48,
+    patchId: 48,
+    title: "Patch 5.7",
     chapter: "production_floor",
     modifier: "plasma_vents",
     gravity: "down",
@@ -2063,9 +1924,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 54,
-    patchId: 54,
-    title: "Patch 6.3",
+    id: 49,
+    patchId: 49,
+    title: "Patch 5.8",
     chapter: "production_floor",
     modifier: "production_finale",
     gravity: "down",
@@ -2122,9 +1983,9 @@ export const levels: LevelDefinition[] = [
   },
 
   {
-    id: 55,
-    patchId: 55,
-    title: "Patch 6.4",
+    id: 50,
+    patchId: 50,
+    title: "Patch 5.9",
     chapter: "production_floor",
     modifier: "production_finale",
     gravity: "down",
