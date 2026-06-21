@@ -53,34 +53,39 @@ export default async function handler(req: VercelRequestLike, res: VercelRespons
       .map((patch) => `Level ${patch.levelId}: Patch ${patch.version}, ${patch.modifier}`)
       .join("; ");
 
-    const response = await client.chat.completions.create({
+    const response = await client.responses.create({
       model,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+      instructions: SYSTEM_PROMPT,
+      input: [
         {
           role: "user",
           content: [
-            "Generate one run of patch-note flavor.",
-            `Seed: ${seed || "random"}.`,
-            `Difficulty label: ${difficulty}.`,
-            `Fixed level order, for context only: ${fixedOrder}.`,
-            "Do not output mechanics, numeric gameplay values, positions, layouts, or win/loss rules.",
-            "Make each headline readable in a small HUD, each note useful as patch-note copy, and each joke a short one-liner.",
-          ].join(" "),
+            {
+              type: "input_text",
+              text: [
+                "Generate one run of patch-note flavor.",
+                `Seed: ${seed || "random"}.`,
+                `Difficulty label: ${difficulty}.`,
+                `Fixed level order, for context only: ${fixedOrder}.`,
+                "Do not output mechanics, numeric gameplay values, positions, layouts, or win/loss rules.",
+                "Make each headline readable in a small HUD, each note useful as patch-note copy, and each joke a short one-liner.",
+              ].join(" "),
+            },
+          ],
         },
       ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
+      text: {
+        format: {
+          type: "json_schema",
           name: "patch_run",
           schema: runJsonSchema,
           strict: true,
         },
       },
-      max_tokens: 8000,
+      max_output_tokens: 8000,
     });
 
-    const parsed = JSON.parse(response.choices[0]?.message?.content ?? "{}");
+    const parsed = JSON.parse(extractResponseText(response));
     res.status(200).json(sanitizeRun(parsed, seed, "openai", difficulty));
   } catch (error) {
     console.error("OpenAI run generation failed", error);
@@ -99,6 +104,32 @@ function readBody(value: unknown): Record<string, unknown> {
   }
 
   return isRecord(value) ? value : {};
+}
+
+function extractResponseText(response: unknown): string {
+  if (!isRecord(response)) {
+    return "{}";
+  }
+
+  if (typeof response.output_text === "string" && response.output_text.trim()) {
+    return response.output_text;
+  }
+
+  const output = Array.isArray(response.output) ? response.output : [];
+  for (const item of output) {
+    if (!isRecord(item) || !Array.isArray(item.content)) continue;
+
+    const text = item.content
+      .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : ""))
+      .join("")
+      .trim();
+
+    if (text) {
+      return text;
+    }
+  }
+
+  return "{}";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
