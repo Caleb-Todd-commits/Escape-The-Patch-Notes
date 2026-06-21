@@ -4,15 +4,15 @@
 **Public repo:** https://github.com/Caleb-Todd-commits/Escape-The-Patch-Notes  
 **Short pitch:** a browser platformer slowly ruined by its own updates.
 
-Escape the Patch Notes is a 50-level Vite + TypeScript + Canvas platformer built entirely with Codex. Chapter 1 (Patches 1.0–3.4) starts as a normal coin-and-exit platformer, then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and the final stability patches stack previous mistakes together. Chapter 2 (Patches 3.5–5.9) moves into The Production Floor — a faster neon tech gauntlet with conveyors, laser gates, razor rails, crushers, tesla arcs, sensors, plasma vents, an unlockable double jump, and an AI release overseer replacing the human engineer.
+Escape the Patch Notes is a 50-level Vite + TypeScript + Canvas platformer built with Codex. Chapter 1 (Patches 1.0–3.4) starts as a normal coin-and-exit platformer, then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and final stability patches stack previous mistakes together. Chapter 2 (Patches 3.5–5.9) moves into The Production Floor — a faster neon tech gauntlet with conveyors, laser gates, razor rails, crushers, tesla arcs, sensors, plasma vents, an unlockable double jump, and an AI release overseer replacing the human engineer.
 
 ## Recommended 5-Minute Judging Path
 
 1. Open the playable link.
 2. Click **Start Exhibition** on the title screen.
-3. Play the seven curated patches. They show the core joke, mechanical variety, Chapter 2, double jump, and the finale.
+3. Play the seven curated patches. They show the core joke, mechanical variety, Chapter 2, double jump, and the finale without requiring a full 50-level clear.
 4. Press `B` to open Choose Level and inspect both chapter pages.
-5. Jump directly to Patch `5.9` (level 50) via Settings → Jump to Level for the hardest Production Floor finale.
+5. Use **Settings → Jump to Level** only if you want to sample a specific late-game patch immediately.
 6. Replay any cleared level to see its Challenge Patch objective and star.
 
 ## Screenshots
@@ -41,11 +41,11 @@ The in-game **Start Exhibition** button plays these seven patches in order:
 |---|---:|---|---|
 | `1.2` | 3 | ![](public/screenshots/exhibition-level-1-2.png) | Coins attract spikes — the first "bad update" joke with real mechanical consequences. |
 | `1.3` | 4 | ![](public/screenshots/chapter-2-intro.png) | Gravity rotates sideways, showing the game can completely change rules without changing controls. |
-| `3.4` | 25 | ![](public/screenshots/production-finale.png) | Chapter 1 finale — bundles all previous broken mechanics into one stability patch. |
+| `3.4` | 25 | ![](public/screenshots/production-finale.png) | Chapter 1 finale — bundles previous broken mechanics into one stability patch. |
 | `3.7` | 28 | ![](public/screenshots/exhibition-double-jump.png) | Double jump unlock, bridging Chapter 1 and the Production Floor's faster movement. |
 | `4.4` | 35 | ![](public/screenshots/exhibition-production-finale.png) | First Production Floor finale with lasers, razors, crushers, plasma vents, and moving exits. |
-| `5.3` | 44 | ![](public/screenshots/choose-level-judge-route.png) | Compact all-hazard gauntlet — every Chapter 2 hazard type in one level. |
-| `5.9` | 50 | ![](public/screenshots/win-screen.png) | True finale — three conveyors, every hazard, fee of 10 coins, rollback tokens on the floor. |
+| `5.3` | 44 | ![](public/screenshots/choose-level-judge-route.png) | Compact all-hazard gauntlet — a quick look at the late-game production chaos. |
+| `5.9` | 50 | ![](public/screenshots/win-screen.png) | Manual Override finale — the final stress test with conveyors, hazards, rollback tokens, and a fee-based exit. |
 
 ## Controls
 
@@ -68,9 +68,9 @@ The in-game **Start Exhibition** button plays these seven patches in order:
 First clear of each level: just reach the exit. After a level is cleared, replaying it unlocks a Challenge Patch objective displayed on the patch intro card.
 
 - **Chapter 1:** usually collect a hidden bug report before reaching the exit.
-- **Chapter 2:** arcade goals — all coins, beat par time, avoid sensors, skip rollback tokens, no double jump, or a master objective combining all of the above.
+- **Chapter 2:** arcade goals — all coins, beat par time, avoid sensors, skip rollback tokens, no double jump, or a master finale objective.
 
-Challenge clears earn a star. Stars, medals, and best times are all tracked per level on the Choose Level board and the final release report.
+Challenge clears earn a star. Stars, medals, and best times are all tracked per level on the Choose Level board and the final release report. The intended judging path is not blocked by perfect clears; the challenge layer is for replay value.
 
 ## AI Integration
 
