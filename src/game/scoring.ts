@@ -24,11 +24,11 @@ export function medalForLevel(seconds: number, targetTime: number, deaths: numbe
     return "gold";
   }
 
-  if (deaths <= 1 && seconds <= targetTime * 1.3) {
+  if (deaths <= 1 && seconds <= targetTime * 1.35) {
     return "silver";
   }
 
-  if (seconds <= targetTime * 1.75) {
+  if (seconds <= targetTime * 1.9) {
     return "bronze";
   }
 
@@ -37,7 +37,7 @@ export function medalForLevel(seconds: number, targetTime: number, deaths: numbe
 
 export function scoreRun(input: RunScoreInput): number {
   const medalBonus = input.results.reduce((total, result) => total + medalPoints(result.medal), 0);
-  const raw = 24_000 - input.seconds * 58 - input.deaths * 520 + input.coins * 115 + input.reports * 420 + medalBonus;
+  const raw = 24_000 - input.seconds * 50 - input.deaths * 360 + input.coins * 120 + input.reports * 420 + medalBonus;
   return Math.max(1000, Math.round(raw));
 }
 
@@ -58,7 +58,7 @@ export function medalColor(medal: Medal): string {
 
 function medalPoints(medal: Medal): number {
   if (medal === "gold") return 900;
-  if (medal === "silver") return 520;
-  if (medal === "bronze") return 260;
-  return 80;
+  if (medal === "silver") return 560;
+  if (medal === "bronze") return 300;
+  return 120;
 }
