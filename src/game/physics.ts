@@ -71,7 +71,7 @@ export function isTimedHazardActive(hazard: TimedHazard, elapsed: number): boole
 export function isTimedHazardWarning(hazard: TimedHazard, elapsed: number): boolean {
   const on = hazard.on ?? 1;
   const off = hazard.off ?? 0;
-  const warning = hazard.warning ?? 0.35;
+  const warning = hazard.warning ?? 0.48;
   if (off <= 0 || warning <= 0) {
     return false;
   }
@@ -83,26 +83,26 @@ export function isTimedHazardWarning(hazard: TimedHazard, elapsed: number): bool
 
 export function jumpImpulseForModifier(modifier: PatchModifier, rollbackActive = false): number {
   if (!rollbackActive && (modifier === "jump_nerf" || modifier === "finale_combo")) {
-    return 490;
+    return 520;
   }
 
-  return 580;
+  return 600;
 }
 
 export function doubleJumpImpulse(baseImpulse: number): number {
-  return Math.round(baseImpulse * 0.78);
+  return Math.round(baseImpulse * 0.82);
 }
 
 export function frictionForModifier(modifier: PatchModifier, rollbackActive = false): number {
   if (!rollbackActive && modifier === "slippery_floor") {
-    return 3;
+    return 4.2;
   }
 
   if (!rollbackActive && modifier === "finale_combo") {
-    return 6;
+    return 7.5;
   }
 
-  return 11;
+  return 12.5;
 }
 
 export function canUseExit(coins: number, fee = 0, rollbackActive = false): boolean {
