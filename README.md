@@ -8,6 +8,18 @@
 
 Escape the Patch Notes is a browser platformer where every level introduces a new suspicious patch note. The first chapter starts like a normal coin-and-exit platformer, then the updates arrive: jump height gets nerfed, coins attract spikes, gravity rotates, platforms crumble, exits charge fees, and final stability bundles stack the previous mistakes together. Chapter 2 moves into **The Production Floor**, a 25-level modern tech gauntlet with conveyors, lasers, razors, crushers, tesla arcs, sensors, plasma vents, an unlockable double jump, and an AI release overseer replacing the human engineer.
 
+## Portfolio Snapshot
+
+Escape the Patch Notes is a fast-built, competition-style browser game that shows product execution, polish, and AI integration under time pressure. The game is fully deterministic and playable without an API key; AI is intentionally limited to flavor copy so gameplay remains fair, testable, and safe.
+
+The project is strongest as proof of:
+
+- full-stack product shipping with Vite, TypeScript, Canvas, Vercel, and a serverless API route
+- deterministic game logic with AI kept outside gameplay-critical systems
+- rapid level design, playtesting, tuning, and judge-focused demo routing
+- OpenAI Responses API integration with Structured Outputs and deterministic fallback copy
+- polished UX: screenshots, judge guide, exhibition route, progression, scoring, medals, and challenge replay goals
+
 ## Screenshots
 
 | Title | Choose Level |
